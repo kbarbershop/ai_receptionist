@@ -23,6 +23,13 @@ const BOOKING_SOURCES = {
   MANUAL: 'Manual Booking'
 };
 
+// Helper function to safely convert BigInt to string
+const safeBigIntToString = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'bigint') return value.toString();
+  return String(value);
+};
+
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
 
 /**
@@ -122,7 +129,7 @@ app.post('/tools/createBooking', async (req, res) => {
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
 
-    // Create booking
+    // Create booking - serviceVariationVersion should be BigInt
     const bookingResponse = await squareClient.bookingsApi.createBooking({
       booking: {
         locationId: LOCATION_ID,
@@ -132,7 +139,7 @@ app.post('/tools/createBooking', async (req, res) => {
         appointmentSegments: [{
           serviceVariationId: serviceVariationId,
           teamMemberId: teamMemberId,
-          serviceVariationVersion: Date.now()
+          serviceVariationVersion: BigInt(Date.now())
         }]
       },
       idempotencyKey: randomUUID()
@@ -347,10 +354,10 @@ app.post('/tools/generalInquiry', async (req, res) => {
             id: variation.id,
             name: variation.itemVariationData?.name,
             price: variation.itemVariationData?.priceMoney?.amount 
-              ? (variation.itemVariationData.priceMoney.amount / 100).toFixed(2)
+              ? (Number(variation.itemVariationData.priceMoney.amount) / 100).toFixed(2)
               : null,
             currency: variation.itemVariationData?.priceMoney?.currency || 'USD',
-            duration: variation.itemVariationData?.serviceDuration
+            duration: safeBigIntToString(variation.itemVariationData?.serviceDuration)
           }))
         }));
         result.servicesCount = result.services.length;
@@ -403,7 +410,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.2.1 - Server Tools Format (6 tools)',
+    version: '2.2.2 - Server Tools Format (6 tools) - BigInt Fixed',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
