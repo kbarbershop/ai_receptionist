@@ -1,13 +1,15 @@
 import express from 'express';
-import { Client } from 'square';
+import { Client } from 'square/legacy';
 import { randomUUID } from 'crypto';
 
 const app = express();
 app.use(express.json());
 
-// Initialize Square client
+// Initialize Square client using legacy API (compatible with SDK v40+)
 const squareClient = new Client({
-  accessToken: process.env.SQUARE_ACCESS_TOKEN,
+  bearerAuthCredentials: {
+    accessToken: process.env.SQUARE_ACCESS_TOKEN
+  },
   environment: 'production'
 });
 
@@ -22,11 +24,9 @@ const BOOKING_SOURCES = {
 };
 
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
-// Each tool is now a separate REST endpoint
 
 /**
  * Get Available Time Slots
- * Returns available appointment times for the next 7 days
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -70,13 +70,11 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
- * Creates an appointment and tracks it came from phone
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
     const { customerName, customerPhone, customerEmail, startTime, serviceVariationId, teamMemberId } = req.body;
 
-    // Validate required fields
     if (!customerName || !customerPhone || !startTime || !serviceVariationId) {
       return res.status(400).json({
         success: false,
@@ -84,7 +82,7 @@ app.post('/tools/createBooking', async (req, res) => {
       });
     }
 
-    // First, find or create customer
+    // Find or create customer
     let customerId;
     let isNewCustomer = false;
     
@@ -102,7 +100,6 @@ app.post('/tools/createBooking', async (req, res) => {
       if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
         customerId = searchResponse.result.customers[0].id;
       } else {
-        // Create new customer with source tracking
         const nameParts = customerName.split(' ');
         const createResponse = await squareClient.customersApi.createCustomer({
           givenName: nameParts[0],
@@ -118,7 +115,7 @@ app.post('/tools/createBooking', async (req, res) => {
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
 
-    // Create the booking with source identifier
+    // Create booking
     const bookingResponse = await squareClient.bookingsApi.createBooking({
       booking: {
         locationId: LOCATION_ID,
@@ -152,7 +149,6 @@ app.post('/tools/createBooking', async (req, res) => {
 
 /**
  * Reschedule Existing Booking
- * Changes appointment time while preserving source tracking
  */
 app.post('/tools/rescheduleBooking', async (req, res) => {
   try {
@@ -197,7 +193,6 @@ app.post('/tools/rescheduleBooking', async (req, res) => {
 
 /**
  * Cancel Booking
- * Cancels an existing appointment
  */
 app.post('/tools/cancelBooking', async (req, res) => {
   try {
@@ -236,7 +231,6 @@ app.post('/tools/cancelBooking', async (req, res) => {
 
 /**
  * Lookup Booking by Phone
- * Finds customer and their upcoming appointments
  */
 app.post('/tools/lookupBooking', async (req, res) => {
   try {
@@ -298,88 +292,13 @@ app.post('/tools/lookupBooking', async (req, res) => {
   }
 });
 
-// ===== LEGACY MCP ENDPOINTS (kept for backwards compatibility) =====
-app.post('/mcp/list-tools', async (req, res) => {
-  res.json({
-    tools: [
-      {
-        name: 'getAvailability',
-        description: 'Check available time slots for booking appointments. Returns available times for the next 7 days.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            startDate: {
-              type: 'string',
-              description: 'Start date in YYYY-MM-DD format (optional, defaults to today)'
-            },
-            serviceVariationId: {
-              type: 'string',
-              description: 'Specific service variation ID (optional)'
-            }
-          }
-        }
-      },
-      {
-        name: 'createBooking',
-        description: 'Create a new appointment booking',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            customerName: { type: 'string', description: 'Customer full name' },
-            customerPhone: { type: 'string', description: 'Customer phone number' },
-            customerEmail: { type: 'string', description: 'Customer email address (optional)' },
-            startTime: { type: 'string', description: 'Appointment start time in ISO 8601 format' },
-            serviceVariationId: { type: 'string', description: 'Service variation ID' },
-            teamMemberId: { type: 'string', description: 'Team member ID (optional)' }
-          },
-          required: ['customerName', 'customerPhone', 'startTime', 'serviceVariationId']
-        }
-      },
-      {
-        name: 'rescheduleBooking',
-        description: 'Reschedule an existing appointment',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            bookingId: { type: 'string', description: 'The booking ID to reschedule' },
-            newStartTime: { type: 'string', description: 'New appointment start time in ISO 8601 format' }
-          },
-          required: ['bookingId', 'newStartTime']
-        }
-      },
-      {
-        name: 'cancelBooking',
-        description: 'Cancel an existing appointment',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            bookingId: { type: 'string', description: 'The booking ID to cancel' }
-          },
-          required: ['bookingId']
-        }
-      },
-      {
-        name: 'lookupBooking',
-        description: 'Find existing bookings by customer phone number',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            customerPhone: { type: 'string', description: 'Customer phone number to search' },
-            customerName: { type: 'string', description: 'Customer name (optional)' }
-          },
-          required: ['customerPhone']
-        }
-      }
-    ]
-  });
-});
-
 // ===== HEALTH & ANALYTICS =====
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.0.0 - Server Tools Format',
+    version: '2.0.1 - Server Tools Format (Legacy API)',
+    sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
         'POST /tools/getAvailability',
@@ -388,7 +307,6 @@ app.get('/health', (req, res) => {
         'POST /tools/cancelBooking',
         'POST /tools/lookupBooking'
       ],
-      legacy: ['POST /mcp/list-tools'],
       analytics: ['GET /analytics/sources']
     },
     bookingSources: BOOKING_SOURCES
@@ -444,6 +362,7 @@ app.listen(PORT, () => {
   console.log(`✅ Square Booking Server running on port ${PORT}`);
   console.log(`📍 Location: K BARBERSHOP (${LOCATION_ID})`);
   console.log(`🔧 Format: ElevenLabs Server Tools`);
+  console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
   console.log(`\n🌐 Endpoints available:`);
   console.log(`   POST /tools/getAvailability`);
