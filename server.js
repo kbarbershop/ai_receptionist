@@ -30,6 +30,29 @@ const safeBigIntToString = (value) => {
   return String(value);
 };
 
+// Helper function to sanitize objects containing BigInt for JSON serialization
+const sanitizeBigInt = (obj) => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return obj.toString();
+  if (typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeBigInt(item));
+  }
+  
+  const sanitized = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'bigint') {
+      sanitized[key] = value.toString();
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeBigInt(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+};
+
 // Helper function to normalize phone numbers to E.164 format
 const normalizePhoneNumber = (phone) => {
   if (!phone) return null;
@@ -90,9 +113,12 @@ app.post('/tools/getAvailability', async (req, res) => {
       }
     });
 
+    // Sanitize BigInt values before sending response
+    const availabilities = sanitizeBigInt(response.result.availabilities || []);
+
     res.json({
       success: true,
-      availableSlots: response.result.availabilities || [],
+      availableSlots: availabilities,
       locationId: LOCATION_ID,
       searchPeriod: {
         start: startAt.toISOString(),
@@ -179,9 +205,12 @@ app.post('/tools/createBooking', async (req, res) => {
       idempotencyKey: randomUUID()
     });
 
+    // Sanitize booking response
+    const booking = sanitizeBigInt(bookingResponse.result.booking);
+
     res.json({
       success: true,
-      booking: bookingResponse.result.booking,
+      booking: booking,
       bookingSource: BOOKING_SOURCES.PHONE,
       message: `Appointment created successfully for ${customerName} at ${startTime}`,
       newCustomer: isNewCustomer
@@ -225,9 +254,11 @@ app.post('/tools/rescheduleBooking', async (req, res) => {
       }
     );
 
+    const booking = sanitizeBigInt(updateResponse.result.booking);
+
     res.json({
       success: true,
-      booking: updateResponse.result.booking,
+      booking: booking,
       message: `Appointment rescheduled to ${newStartTime}`
     });
   } catch (error) {
@@ -263,9 +294,11 @@ app.post('/tools/cancelBooking', async (req, res) => {
       }
     );
 
+    const booking = sanitizeBigInt(cancelResponse.result.booking);
+
     res.json({
       success: true,
-      booking: cancelResponse.result.booking,
+      booking: booking,
       message: 'Appointment cancelled successfully'
     });
   } catch (error) {
@@ -327,12 +360,15 @@ app.post('/tools/lookupBooking', async (req, res) => {
       future.toISOString()
     );
 
+    const customer = sanitizeBigInt(searchResponse.result.customers[0]);
+    const bookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
+
     res.json({
       success: true,
       found: true,
-      customer: searchResponse.result.customers[0],
-      bookings: bookingsResponse.result.bookings || [],
-      message: `Found ${bookingsResponse.result.bookings?.length || 0} upcoming bookings`
+      customer: customer,
+      bookings: bookings,
+      message: `Found ${bookings.length} upcoming bookings`
     });
   } catch (error) {
     console.error('lookupBooking error:', error);
@@ -447,7 +483,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.2.3 - Phone Number Fix',
+    version: '2.2.4 - BigInt Serialization Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -495,7 +531,7 @@ app.get('/analytics/sources', async (req, res) => {
       else if (note.includes('Website Booking')) sourceCounts.website++;
       else if (note.includes('In Store')) sourceCounts.inStore++;
       else if (note.includes('Manual')) sourceCounts.manual++;
-      else sourceCounts.unknown++
+      else sourceCounts.unknown++;
     });
 
     res.json({
