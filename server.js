@@ -292,12 +292,117 @@ app.post('/tools/lookupBooking', async (req, res) => {
   }
 });
 
+/**
+ * Get Business Hours
+ * Returns current business hours from Square Location API
+ */
+app.post('/tools/getBusinessHours', async (req, res) => {
+  try {
+    const response = await squareClient.locationsApi.retrieveLocation(LOCATION_ID);
+    const location = response.result.location;
+
+    res.json({
+      success: true,
+      businessHours: location.businessHours || {},
+      timezone: location.timezone || 'America/New_York',
+      locationName: location.name,
+      address: location.address,
+      phoneNumber: location.phoneNumber
+    });
+  } catch (error) {
+    console.error('getBusinessHours error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get Services
+ * Returns all services and pricing from Square Catalog
+ */
+app.post('/tools/getServices', async (req, res) => {
+  try {
+    const response = await squareClient.catalogApi.listCatalog(
+      undefined,
+      'ITEM'
+    );
+
+    const services = (response.result.objects || []).map(item => ({
+      id: item.id,
+      name: item.itemData?.name,
+      description: item.itemData?.description,
+      variations: (item.itemData?.variations || []).map(variation => ({
+        id: variation.id,
+        name: variation.itemVariationData?.name,
+        price: variation.itemVariationData?.priceMoney?.amount 
+          ? (variation.itemVariationData.priceMoney.amount / 100).toFixed(2)
+          : null,
+        currency: variation.itemVariationData?.priceMoney?.currency || 'USD',
+        duration: variation.itemVariationData?.serviceDuration
+      }))
+    }));
+
+    res.json({
+      success: true,
+      services: services,
+      count: services.length
+    });
+  } catch (error) {
+    console.error('getServices error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get Team Members
+ * Returns all barbers/staff from Square Team API
+ */
+app.post('/tools/getTeamMembers', async (req, res) => {
+  try {
+    const response = await squareClient.teamApi.searchTeamMembers({
+      query: {
+        filter: {
+          locationIds: [LOCATION_ID],
+          status: 'ACTIVE'
+        }
+      }
+    });
+
+    const teamMembers = (response.result.teamMembers || []).map(member => ({
+      id: member.id,
+      givenName: member.givenName,
+      familyName: member.familyName,
+      fullName: `${member.givenName || ''} ${member.familyName || ''}`.trim(),
+      emailAddress: member.emailAddress,
+      phoneNumber: member.phoneNumber,
+      isOwner: member.isOwner || false
+    }));
+
+    res.json({
+      success: true,
+      teamMembers: teamMembers,
+      count: teamMembers.length
+    });
+  } catch (error) {
+    console.error('getTeamMembers error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // ===== HEALTH & ANALYTICS =====
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.0.1 - Server Tools Format (Legacy API)',
+    version: '2.1.0 - Server Tools Format (8 tools)',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -305,7 +410,10 @@ app.get('/health', (req, res) => {
         'POST /tools/createBooking',
         'POST /tools/rescheduleBooking',
         'POST /tools/cancelBooking',
-        'POST /tools/lookupBooking'
+        'POST /tools/lookupBooking',
+        'POST /tools/getBusinessHours',
+        'POST /tools/getServices',
+        'POST /tools/getTeamMembers'
       ],
       analytics: ['GET /analytics/sources']
     },
@@ -364,10 +472,13 @@ app.listen(PORT, () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
-  console.log(`\n🌐 Endpoints available:`);
+  console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
   console.log(`   POST /tools/rescheduleBooking`);
   console.log(`   POST /tools/cancelBooking`);
   console.log(`   POST /tools/lookupBooking`);
+  console.log(`   POST /tools/getBusinessHours`);
+  console.log(`   POST /tools/getServices`);
+  console.log(`   POST /tools/getTeamMembers`);
 });
