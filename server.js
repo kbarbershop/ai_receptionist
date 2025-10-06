@@ -30,6 +30,32 @@ const safeBigIntToString = (value) => {
   return String(value);
 };
 
+// Helper function to normalize phone numbers to E.164 format
+const normalizePhoneNumber = (phone) => {
+  if (!phone) return null;
+  
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+  
+  // If it already has country code (starts with 1 and has 11 digits), add +
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  
+  // If it's a 10-digit US number, add +1
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  
+  // If it's longer and doesn't start with +, add +
+  if (digits.length > 10 && !phone.startsWith('+')) {
+    return `+${digits}`;
+  }
+  
+  // Return as-is if it already has + or doesn't match patterns
+  return phone.startsWith('+') ? phone : `+${digits}`;
+};
+
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
 
 /**
@@ -96,16 +122,21 @@ app.post('/tools/createBooking', async (req, res) => {
       });
     }
 
+    // Normalize phone number to E.164 format
+    const normalizedPhone = normalizePhoneNumber(customerPhone);
+    console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
+
     // Find or create customer
     let customerId;
     let isNewCustomer = false;
     
     try {
+      // Search with digits only
       const searchResponse = await squareClient.customersApi.searchCustomers({
         query: {
           filter: {
             phoneNumber: {
-              exact: customerPhone.replace(/\D/g, '')
+              exact: normalizedPhone.replace(/\D/g, '')
             }
           }
         }
@@ -113,19 +144,22 @@ app.post('/tools/createBooking', async (req, res) => {
 
       if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
         customerId = searchResponse.result.customers[0].id;
+        console.log(`✅ Found existing customer: ${customerId}`);
       } else {
         const nameParts = customerName.split(' ');
         const createResponse = await squareClient.customersApi.createCustomer({
           givenName: nameParts[0],
           familyName: nameParts.slice(1).join(' ') || '',
-          phoneNumber: customerPhone,
+          phoneNumber: normalizedPhone,  // Use normalized E.164 format
           emailAddress: customerEmail,
           note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
         });
         customerId = createResponse.result.customer.id;
         isNewCustomer = true;
+        console.log(`✅ Created new customer: ${customerId}`);
       }
     } catch (error) {
+      console.error('Customer find/create error details:', error);
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
 
@@ -257,11 +291,14 @@ app.post('/tools/lookupBooking', async (req, res) => {
       });
     }
 
+    // Normalize phone for search
+    const normalizedPhone = normalizePhoneNumber(customerPhone);
+
     const searchResponse = await squareClient.customersApi.searchCustomers({
       query: {
         filter: {
           phoneNumber: {
-            exact: customerPhone.replace(/\D/g, '')
+            exact: normalizedPhone.replace(/\D/g, '')
           }
         }
       }
@@ -410,7 +447,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.2.2 - Server Tools Format (6 tools) - BigInt Fixed',
+    version: '2.2.3 - Phone Number Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -458,7 +495,7 @@ app.get('/analytics/sources', async (req, res) => {
       else if (note.includes('Website Booking')) sourceCounts.website++;
       else if (note.includes('In Store')) sourceCounts.inStore++;
       else if (note.includes('Manual')) sourceCounts.manual++;
-      else sourceCounts.unknown++;
+      else sourceCounts.unknown++
     });
 
     res.json({
