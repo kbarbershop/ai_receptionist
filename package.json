@@ -1,7 +1,7 @@
 {
-  "name": "square-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP Server for Square Bookings API - K Barbershop",
+  "name": "square-booking-server",
+  "version": "2.0.0",
+  "description": "Square Bookings Server for ElevenLabs AI - K Barbershop",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "square": "^36.1.0"
+    "square": "^43.0.2"
   },
   "engines": {
     "node": ">=18"
