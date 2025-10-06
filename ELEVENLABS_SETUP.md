@@ -1,315 +1,305 @@
-# ElevenLabs Server Tools Integration Guide
+# ElevenLabs Integration Setup Guide
 
-## ✅ Server Updated (Oct 6, 2025)
-Your Square booking server has been converted to ElevenLabs Server Tools format.
-
-**Server URL:** `https://square-mcp-server-265357944939.us-east4.run.app`
+**Last Updated:** October 6, 2025  
+**Server:** https://square-mcp-server-265357944939.us-east4.run.app
 
 ---
 
-## 🔧 Step 1: Redeploy to Google Cloud Run
+## 📋 Prerequisites
 
-Your server code is updated on GitHub. Now redeploy:
-
-```bash
-cd ~/square-mcp-server-deploy
-git pull origin main
-
-# Rebuild Docker image
-docker build --platform linux/amd64 --no-cache -t gcr.io/website-473417/square-mcp-server:latest .
-
-# Push to Google Container Registry
-docker push gcr.io/website-473417/square-mcp-server:latest
-
-# Deploy to Cloud Run
-gcloud run deploy square-mcp-server \
-  --image gcr.io/website-473417/square-mcp-server:latest \
-  --platform managed \
-  --region us-east4 \
-  --allow-unauthenticated \
-  --set-env-vars SQUARE_ACCESS_TOKEN=EAAAl6DLAw75VQSm6qSi4cwNA_Y10kPC4ZtycW-GikXXgDbapqr9aipErTiaXqMr,SQUARE_LOCATION_ID=LCS4MXPZP8J3M
-```
+✅ Server deployed to Google Cloud Run  
+✅ Test script passed (health check working)  
+✅ Square API credentials configured
 
 ---
 
-## 🤖 Step 2: Configure ElevenLabs Agent
+## 🎯 Setup Overview
 
-### Access Your Agent Settings
-1. Go to ElevenLabs dashboard
+1. **Copy System Prompt** → Agent settings
+2. **Add 5 Tools** → Copy JSON configs
+3. **Test Agent** → Verify each workflow
+
+**Estimated Time:** 15 minutes
+
+---
+
+## Step 1: Configure System Prompt (5 min)
+
+### Open Your Agent Settings
+1. Go to **ElevenLabs Dashboard**
 2. Select your AI receptionist agent
-3. Navigate to **Agent** section → **Tools**
+3. Navigate to **Agent** section → **System Prompt**
 
-### Add Each Tool (5 Total)
+### Copy the System Prompt
+The complete system prompt is in: **[ELEVENLABS_SYSTEM_PROMPT.md](ELEVENLABS_SYSTEM_PROMPT.md)**
 
-For each tool below, click **"Add Tool"** → Select **"Webhook"** type:
+**Or copy from here:**
+
+```
+You are the AI receptionist for K Barbershop in Great Falls, Virginia.
+
+[See ELEVENLABS_SYSTEM_PROMPT.md for full prompt - 8.5KB]
+```
+
+**Key sections included:**
+- ✅ Timezone handling (America/New_York with EST/EDT)
+- ✅ Personality guidelines (friendly, concise, professional)
+- ✅ Appointment workflows (book, reschedule, cancel)
+- ✅ Tool usage instructions
+- ✅ Guardrails and rules
+- ✅ Response templates
+
+**Paste the entire system prompt into ElevenLabs.**
 
 ---
 
-### Tool 1: Check Availability
+## Step 2: Add 5 Tools (8 min)
 
-**Configuration:**
-- **Name:** `checkAvailability`
-- **Description:** `Check available appointment time slots for the next 7 days. Use this before booking to show customers their options.`
-- **URL:** `https://square-mcp-server-265357944939.us-east4.run.app/tools/getAvailability`
-- **Method:** `POST`
-- **Authentication:** None
+### Tool Configuration Format
+All tool JSON configs are in: **[ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md)**
 
-**Body Parameters:**
-```json
-{
-  "startDate": {
-    "type": "string",
-    "description": "Start date in YYYY-MM-DD format. Leave empty to start from today.",
-    "required": false
-  },
-  "serviceVariationId": {
-    "type": "string", 
-    "description": "Specific service ID if customer knows what they want. Leave empty to show all services.",
-    "required": false
-  }
-}
-```
+### How to Add Each Tool
+
+1. In Agent settings → **Tools** section
+2. Click **"Add Tool"**
+3. Select **"Webhook"** as Tool Type
+4. **Copy JSON from ELEVENLABS_TOOL_CONFIGS.md**
+5. Paste into ElevenLabs (it should auto-populate fields)
+6. Click **Save**
+7. Repeat for all 5 tools
 
 ---
 
-### Tool 2: Create Booking
+### Tool 1: checkAvailability ✅
+**Purpose:** Check available appointment slots (7-day window)
 
-**Configuration:**
-- **Name:** `createBooking`
-- **Description:** `Create a new appointment booking. Always ask for customer name, phone number, and preferred time before calling this. Confirm all details with customer before booking.`
-- **URL:** `https://square-mcp-server-265357944939.us-east4.run.app/tools/createBooking`
-- **Method:** `POST`
-- **Authentication:** None
+**JSON Config:** See [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md#tool-1-check-availability)
 
-**Body Parameters:**
-```json
-{
-  "customerName": {
-    "type": "string",
-    "description": "Customer's full name (first and last name)",
-    "required": true
-  },
-  "customerPhone": {
-    "type": "string",
-    "description": "Customer's phone number including area code",
-    "required": true
-  },
-  "customerEmail": {
-    "type": "string",
-    "description": "Customer's email address (optional)",
-    "required": false
-  },
-  "startTime": {
-    "type": "string",
-    "description": "Appointment start time in ISO 8601 format (e.g., 2025-10-15T14:00:00Z). Convert from customer's requested time.",
-    "required": true
-  },
-  "serviceVariationId": {
-    "type": "string",
-    "description": "The service variation ID from availability check",
-    "required": true
-  },
-  "teamMemberId": {
-    "type": "string",
-    "description": "Specific barber/team member ID if customer has preference (optional)",
-    "required": false
-  }
-}
-```
+**Parameters:**
+- `startDate` (optional): YYYY-MM-DD format
+- `serviceVariationId` (optional): Specific service
 
 ---
 
-### Tool 3: Reschedule Booking
+### Tool 2: createBooking ✅
+**Purpose:** Create new appointments
 
-**Configuration:**
-- **Name:** `rescheduleBooking`
-- **Description:** `Change the time of an existing appointment. First lookup the booking to get the booking ID, then use this tool with the new time.`
-- **URL:** `https://square-mcp-server-265357944939.us-east4.run.app/tools/rescheduleBooking`
-- **Method:** `POST`
-- **Authentication:** None
+**JSON Config:** See [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md#tool-2-create-booking)
 
-**Body Parameters:**
-```json
-{
-  "bookingId": {
-    "type": "string",
-    "description": "The booking ID from the lookup results",
-    "required": true
-  },
-  "newStartTime": {
-    "type": "string",
-    "description": "New appointment time in ISO 8601 format (e.g., 2025-10-15T14:00:00Z)",
-    "required": true
-  }
-}
-```
+**Parameters:**
+- `customerName` (required): Full name
+- `customerPhone` (required): 10-digit phone
+- `customerEmail` (optional): Email address
+- `startTime` (required): ISO 8601 with timezone
+- `serviceVariationId` (required): From availability
+- `teamMemberId` (optional): Specific barber
+
+**Critical:** `startTime` MUST include UTC offset:
+- `2025-10-15T14:00:00-04:00` (EDT)
+- `2025-10-15T14:00:00-05:00` (EST)
 
 ---
 
-### Tool 4: Cancel Booking
+### Tool 3: lookupBooking ✅
+**Purpose:** Find bookings by phone number
 
-**Configuration:**
-- **Name:** `cancelBooking`
-- **Description:** `Cancel an existing appointment. First lookup the booking to get the booking ID, then use this tool. Ask customer to confirm cancellation before proceeding.`
-- **URL:** `https://square-mcp-server-265357944939.us-east4.run.app/tools/cancelBooking`
-- **Method:** `POST`
-- **Authentication:** None
+**JSON Config:** See [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md#tool-3-lookup-booking)
 
-**Body Parameters:**
-```json
-{
-  "bookingId": {
-    "type": "string",
-    "description": "The booking ID to cancel",
-    "required": true
-  }
-}
-```
+**Parameters:**
+- `customerPhone` (required): 10-digit phone
+- `customerName` (optional): For verification
 
 ---
 
-### Tool 5: Lookup Booking
+### Tool 4: rescheduleBooking ✅
+**Purpose:** Change appointment time
 
-**Configuration:**
-- **Name:** `lookupBooking`
-- **Description:** `Find existing appointments by customer's phone number. Use this when customer wants to reschedule, cancel, or check their appointment.`
-- **URL:** `https://square-mcp-server-265357944939.us-east4.run.app/tools/lookupBooking`
-- **Method:** `POST`
-- **Authentication:** None
+**JSON Config:** See [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md#tool-4-reschedule-booking)
 
-**Body Parameters:**
-```json
-{
-  "customerPhone": {
-    "type": "string",
-    "description": "Customer's phone number to search for bookings",
-    "required": true
-  },
-  "customerName": {
-    "type": "string",
-    "description": "Customer's name for additional verification (optional)",
-    "required": false
-  }
-}
-```
+**Parameters:**
+- `bookingId` (required): From lookupBooking
+- `newStartTime` (required): ISO 8601 with timezone
 
 ---
 
-## 🎯 Step 3: Update Agent System Prompt
+### Tool 5: cancelBooking ✅
+**Purpose:** Cancel appointments
 
-Add this to your agent's system prompt to guide tool usage:
+**JSON Config:** See [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md#tool-5-cancel-booking)
 
-```
-You are the AI receptionist for K Barbershop. You can help customers book, reschedule, and cancel appointments.
-
-TOOL USAGE WORKFLOW:
-
-For NEW bookings:
-1. Greet the customer warmly
-2. Use checkAvailability to show available time slots
-3. Collect: customer name, phone number, email (optional), preferred time
-4. Confirm all details with customer
-5. Use createBooking to book the appointment
-6. Provide confirmation with appointment details
-
-For RESCHEDULING:
-1. Get customer's phone number
-2. Use lookupBooking to find their appointment
-3. Show current appointment details
-4. Use checkAvailability to show new available times
-5. Get customer's preferred new time
-6. Confirm change with customer
-7. Use rescheduleBooking with the booking ID
-
-For CANCELLATIONS:
-1. Get customer's phone number
-2. Use lookupBooking to find their appointment
-3. Show appointment details
-4. Ask customer to confirm they want to cancel
-5. Use cancelBooking with the booking ID
-6. Confirm cancellation
-
-IMPORTANT RULES:
-- Always confirm details before creating/changing appointments
-- Be friendly and professional
-- If lookup returns multiple bookings, ask which one they're calling about
-- Always read back appointment details for confirmation
-- Convert times to customer's local timezone (EST for K Barbershop)
-```
+**Parameters:**
+- `bookingId` (required): From lookupBooking
 
 ---
 
-## ✅ Step 4: Test Your Integration
+## Step 3: Test Your Agent (2 min)
 
-### Test in ElevenLabs Dashboard:
+### Test in ElevenLabs Dashboard
 
-1. **Test Availability:**
-   - Ask: "What time slots do you have available this week?"
-   - Agent should call `checkAvailability` and show results
+**Test 1: Check Availability**
+- Say: *"What time slots do you have available tomorrow?"*
+- ✅ Agent should call `checkAvailability`
+- ✅ Agent should list available times
 
-2. **Test Booking:**
-   - Say: "I'd like to book a haircut for tomorrow at 2pm. My name is John Smith and my phone is 555-0123"
-   - Agent should use `createBooking`
+**Test 2: Create Booking**
+- Say: *"I'd like to book a haircut for tomorrow at 2pm. My name is John Smith, phone 555-0123"*
+- ✅ Agent should check availability first
+- ✅ Agent should confirm details
+- ✅ Agent should call `createBooking`
+- ✅ Should see booking in Square Dashboard
 
-3. **Test Lookup:**
-   - Say: "I need to check my appointment. My phone is 555-0123"
-   - Agent should use `lookupBooking`
+**Test 3: Lookup Booking**
+- Say: *"I need to check my appointment. My phone is 555-0123"*
+- ✅ Agent should call `lookupBooking`
+- ✅ Agent should read back appointment details
 
-4. **Test Reschedule:**
-   - Say: "Can I move my appointment to a different day?"
-   - Agent should lookup → show availability → reschedule
+**Test 4: Reschedule**
+- Say: *"Can I move my appointment to Thursday at 3pm?"*
+- ✅ Agent should lookup current appointment
+- ✅ Agent should check new availability
+- ✅ Agent should confirm change
+- ✅ Agent should call `rescheduleBooking`
 
-5. **Test Cancel:**
-   - Say: "I need to cancel my appointment"
-   - Agent should lookup → confirm → cancel
+**Test 5: Cancel**
+- Say: *"I need to cancel my appointment"*
+- ✅ Agent should lookup appointment
+- ✅ Agent should confirm cancellation
+- ✅ Agent should call `cancelBooking`
 
 ---
 
-## 📊 Monitoring & Analytics
+## 📊 Verify in Square Dashboard
 
-### Check Server Health:
-```bash
-curl https://square-mcp-server-265357944939.us-east4.run.app/health
-```
-
-### View Booking Sources (Last 30 Days):
-```bash
-curl https://square-mcp-server-265357944939.us-east4.run.app/analytics/sources
-```
-
-This shows how many bookings came from:
-- Phone (ElevenLabs AI)
-- Website
-- In-store
-- Manual
+After testing, check Square Dashboard:
+1. Go to **Appointments** tab
+2. Look for test bookings
+3. Check customer notes: Should say **"Phone Booking (ElevenLabs AI)"**
+4. Verify all changes (reschedules/cancels) worked
 
 ---
 
 ## 🔍 Troubleshooting
 
-### Tool Not Being Called:
-- Check tool name and description are clear
-- Update system prompt with more specific instructions
-- Test with simpler queries first
+### Agent Not Calling Tools
 
-### Authentication Errors:
-- Verify Cloud Run deployment succeeded
-- Check environment variables are set correctly
-- Test endpoint directly with curl
+**Issue:** Agent responds but doesn't use tools
 
-### Booking Fails:
-- Check Square API credentials are valid
-- Verify Location ID matches your Square location
-- Look at Cloud Run logs: `gcloud run logs read square-mcp-server --region us-east4`
+**Fix:**
+1. Check tool names match exactly (case-sensitive)
+2. Verify tool descriptions are clear
+3. Update system prompt with more specific tool usage instructions
+4. Test with simpler queries first
 
 ---
 
-## 📝 Next Steps
+### Tool Returns Error
 
-1. Deploy updated server to Cloud Run
-2. Configure all 5 tools in ElevenLabs
-3. Update agent system prompt
-4. Test each workflow thoroughly
-5. Monitor analytics endpoint to track phone vs website bookings
+**Issue:** Tool is called but returns 400/500 error
 
-**All phone bookings will be tagged as "Phone Booking (ElevenLabs AI)" in Square's customer notes for tracking!**
+**Check:**
+1. Server is running:
+   ```bash
+   curl https://square-mcp-server-265357944939.us-east4.run.app/health
+   ```
+
+2. Parameter format (especially `startTime`):
+   - ❌ Wrong: `2025-10-15T14:00:00`
+   - ✅ Right: `2025-10-15T14:00:00-04:00`
+
+3. Cloud Run logs:
+   ```bash
+   gcloud run logs read square-mcp-server --region us-east4 --limit 50
+   ```
+
+---
+
+### Wrong Data Being Sent
+
+**Issue:** Tool is called with incorrect parameters
+
+**Fix:**
+1. Review tool description in JSON config
+2. Make parameter descriptions more specific
+3. Add examples in parameter descriptions
+4. Update system prompt with parameter format examples
+
+---
+
+### Timezone Issues
+
+**Issue:** Appointments created at wrong time
+
+**Fix:**
+- System prompt specifies: **America/New_York (EST/EDT)**
+- All times MUST include UTC offset:
+  - EST (Nov-Mar): `-05:00`
+  - EDT (Mar-Nov): `-04:00`
+- Update system prompt if needed
+
+---
+
+## 📚 Additional Resources
+
+- **System Prompt:** [ELEVENLABS_SYSTEM_PROMPT.md](ELEVENLABS_SYSTEM_PROMPT.md)
+- **Tool Configs:** [ELEVENLABS_TOOL_CONFIGS.md](ELEVENLABS_TOOL_CONFIGS.md)
+- **Server README:** [README.md](README.md)
+- **Quick Reference:** [QUICKREF.md](QUICKREF.md)
+
+---
+
+## 🆘 Need Help?
+
+**Server Issues:**
+```bash
+# Check server health
+curl https://square-mcp-server-265357944939.us-east4.run.app/health
+
+# View logs
+gcloud run logs read square-mcp-server --region us-east4
+
+# Test endpoint directly
+curl -X POST https://square-mcp-server-265357944939.us-east4.run.app/tools/getAvailability \
+  -H "Content-Type: application/json" \
+  -d '{"startDate": "2025-10-15"}'
+```
+
+**ElevenLabs Issues:**
+- Check ElevenLabs documentation: https://elevenlabs.io/docs/conversational-ai
+- Test tools individually in ElevenLabs dashboard
+- Verify webhook URLs are correct
+- Check for typos in JSON configs
+
+---
+
+## ✅ Success Checklist
+
+- [ ] System prompt configured
+- [ ] All 5 tools added and saved
+- [ ] Tested availability check
+- [ ] Tested booking creation
+- [ ] Tested lookup
+- [ ] Tested rescheduling
+- [ ] Tested cancellation
+- [ ] Verified in Square Dashboard
+- [ ] Phone bookings tagged correctly
+
+---
+
+## 📈 Next Steps
+
+Once everything works:
+
+1. **Monitor Analytics:**
+   ```bash
+   curl https://square-mcp-server-265357944939.us-east4.run.app/analytics/sources
+   ```
+
+2. **Review Call Logs** in ElevenLabs to improve system prompt
+
+3. **Update Business Hours** when needed (system will pull from Square)
+
+4. **Add Knowledge Base** - Upload SOP document to ElevenLabs for additional context
+
+---
+
+**Your AI receptionist is now live and ready to book appointments! 🎉**
