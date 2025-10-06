@@ -45,7 +45,14 @@ app.post('/tools/getAvailability', async (req, res) => {
             startAt: startAt.toISOString(),
             endAt: endAt.toISOString()
           },
-          ...(serviceVariationId && { serviceVariationId })
+          segmentFilters: [
+            {
+              serviceVariationId: serviceVariationId,
+              teamMemberIdFilter: {
+                any: []
+              }
+            }
+          ]
         }
       }
     });
@@ -396,7 +403,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.2.0 - Server Tools Format (6 tools)',
+    version: '2.2.1 - Server Tools Format (6 tools)',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
