@@ -1,8 +1,8 @@
-# ElevenLabs Tool Configurations (JSON Format) - CORRECTED
+# ElevenLabs Tool Configurations (JSON Format) - ALL 8 TOOLS
 
 Copy and paste these JSON configurations when setting up each tool in ElevenLabs.
 
-**IMPORTANT:** Required fields are marked and must be filled by the agent.
+**IMPORTANT:** Required fields are marked with "REQUIRED" prefix.
 
 ---
 
@@ -336,45 +336,163 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
 
 ---
 
+## Tool 6: Get Business Hours ⭐ NEW
+
+**No fields required** - returns current business hours from Square
+
+```json
+{
+  "type": "webhook",
+  "name": "getBusinessHours",
+  "description": "Get K Barbershop's current business hours, timezone, address, and phone number from Square. Use this to answer questions about store hours, when they open/close, or if they're open on specific days.",
+  "api_schema": {
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/tools/getBusinessHours",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "No parameters needed",
+      "required": false,
+      "properties": [],
+      "dynamic_variable": "",
+      "constant_value": "",
+      "value_type": "llm_prompt"
+    },
+    "request_headers": [],
+    "auth_connection": null
+  },
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  },
+  "assignments": [],
+  "disable_interruptions": false,
+  "response_timeout_secs": 15,
+  "force_pre_tool_speech": "auto"
+}
+```
+
+---
+
+## Tool 7: Get Services ⭐ NEW
+
+**No fields required** - returns all services and pricing from Square Catalog
+
+```json
+{
+  "type": "webhook",
+  "name": "getServices",
+  "description": "Get all available services, descriptions, pricing, and durations from Square Catalog. Use this to answer questions about what services are offered, how much they cost, or how long they take.",
+  "api_schema": {
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/tools/getServices",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "No parameters needed",
+      "required": false,
+      "properties": [],
+      "dynamic_variable": "",
+      "constant_value": "",
+      "value_type": "llm_prompt"
+    },
+    "request_headers": [],
+    "auth_connection": null
+  },
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  },
+  "assignments": [],
+  "disable_interruptions": false,
+  "response_timeout_secs": 15,
+  "force_pre_tool_speech": "auto"
+}
+```
+
+---
+
+## Tool 8: Get Team Members ⭐ NEW
+
+**No fields required** - returns all active barbers/staff from Square
+
+```json
+{
+  "type": "webhook",
+  "name": "getTeamMembers",
+  "description": "Get all barbers and team members working at K Barbershop from Square. Use this to answer questions about who works there, if a specific barber is available, or to show customer their options for barber preferences.",
+  "api_schema": {
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/tools/getTeamMembers",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "No parameters needed",
+      "required": false,
+      "properties": [],
+      "dynamic_variable": "",
+      "constant_value": "",
+      "value_type": "llm_prompt"
+    },
+    "request_headers": [],
+    "auth_connection": null
+  },
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  },
+  "assignments": [],
+  "disable_interruptions": false,
+  "response_timeout_secs": 15,
+  "force_pre_tool_speech": "auto"
+}
+```
+
+---
+
 ## Required Fields Summary
 
-| Tool | Required Fields |
-|------|----------------|
-| **checkAvailability** | None (all optional) |
-| **createBooking** | `customerName`, `customerPhone`, `startTime`, `serviceVariationId` |
-| **lookupBooking** | `customerPhone` |
-| **rescheduleBooking** | `bookingId`, `newStartTime` |
-| **cancelBooking** | `bookingId` |
+| Tool | Required Fields | Optional Fields |
+|------|----------------|-----------------|
+| **checkAvailability** | None | `startDate`, `serviceVariationId` |
+| **createBooking** | `customerName`, `customerPhone`, `startTime`, `serviceVariationId` | `customerEmail`, `teamMemberId` |
+| **lookupBooking** | `customerPhone` | `customerName` |
+| **rescheduleBooking** | `bookingId`, `newStartTime` | None |
+| **cancelBooking** | `bookingId` | None |
+| **getBusinessHours** ⭐ | None | None |
+| **getServices** ⭐ | None | None |
+| **getTeamMembers** ⭐ | None | None |
 
 ---
 
 ## Setup Instructions
 
 1. Go to your ElevenLabs agent → **Agent** section → **Tools**
-2. Click **"Add Tool"**
+2. Click **"Add Tool"** for each tool (8 total)
 3. Select **"Webhook"** as Tool Type
-4. Copy and paste each JSON configuration above (one at a time)
+4. Copy and paste each JSON configuration above
 5. **Verify required fields are marked** in the ElevenLabs UI
 6. Save each tool
-
-**Important Notes:**
-- All tools use **POST** method
-- All tools use **no authentication** (auth_connection: null)
-- Server URL is already configured in each JSON
-- Test each tool after adding to verify it works
+7. **Test each new tool** after adding
 
 ---
 
-## Tool Usage Order
+## Tool Usage Examples
 
-**For new bookings:**
-1. checkAvailability → 2. createBooking
+### Using getBusinessHours
+**Customer:** "What time do you close today?"  
+**Agent:** [Calls getBusinessHours] → "We're open until 7pm today!"
 
-**For rescheduling:**
-1. lookupBooking → 2. checkAvailability → 3. rescheduleBooking
+### Using getServices
+**Customer:** "How much is a haircut?"  
+**Agent:** [Calls getServices] → "Our men's haircut is $30 and takes about 30 minutes."
 
-**For canceling:**
-1. lookupBooking → 2. cancelBooking
+### Using getTeamMembers
+**Customer:** "Can I book with John?"  
+**Agent:** [Calls getTeamMembers] → "Yes, John is available! What day works for you?"
 
 ---
 
@@ -392,13 +510,19 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
 - Check parameter format (especially startTime - must include timezone)
 - Look at Cloud Run logs: `gcloud run logs read square-mcp-server --region us-east4`
 
-**Missing required fields:**
-- Agent should collect required info BEFORE calling tool
-- Update system prompt to emphasize gathering all required fields
-- Tool descriptions now include "REQUIRED" in descriptions
+**New tools not returning data:**
+- Verify Square Catalog has services configured
+- Check Square Location has business hours set
+- Ensure team members are marked as ACTIVE in Square
+- Test endpoints directly with curl
 
-**Wrong data being sent:**
-- Review tool description in JSON config
-- Make parameter descriptions more specific
-- Add examples in parameter descriptions
-- Update system prompt with parameter format examples
+---
+
+## Next Steps
+
+1. **Redeploy server** (tools already added to server.js)
+2. **Add all 8 tools** to ElevenLabs
+3. **Update system prompt** (see ELEVENLABS_SYSTEM_PROMPT.md)
+4. **Test new tools** thoroughly
+
+**Server already has these 3 new tools implemented! Just add them to ElevenLabs and update the system prompt.** 🎉
