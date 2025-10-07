@@ -94,24 +94,38 @@ const formatTimeSlot = (slot) => {
       return slot;
     }
     
-    // Convert to EDT (UTC-4)
-    const edtDate = new Date(utcDate.getTime() - (4 * 60 * 60 * 1000));
+    // Convert to EDT using toLocaleString with America/New_York timezone
+    const edtString = utcDate.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
     
-    // Get hours and minutes in EDT
-    const hours = edtDate.getUTCHours();
-    const minutes = edtDate.getUTCMinutes();
+    // Parse the EDT string to get hours and minutes
+    const [datePart, timePart] = edtString.split(', ');
+    const [month, day, year] = datePart.split('/');
+    const [hours, minutes, seconds] = timePart.split(':');
+    
+    // Create ISO string for EDT
+    const edtISOString = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hours}:${minutes}:${seconds}-04:00`;
     
     // Format as 12-hour time
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hour12 = hours % 12 || 12;
+    const hour24 = parseInt(hours, 10);
+    const period = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 % 12 || 12;
     const minuteStr = minutes.toString().padStart(2, '0');
     
     return {
       ...slot,
       start_at_utc: slot.start_at,
-      start_at_edt: edtDate.toISOString().replace('Z', '-04:00'),
+      start_at_edt: edtISOString,
       human_readable: `${hour12}:${minuteStr} ${period}`,
-      time_24h: `${hours.toString().padStart(2, '0')}:${minuteStr}`
+      time_24h: `${hours}:${minuteStr}`
     };
   } catch (error) {
     console.error('Error formatting time slot:', error, slot);
@@ -659,7 +673,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.2 - Full Day Search Fix',
+    version: '2.3.3 - UTC to EDT Time Conversion Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -701,9 +715,7 @@ app.get('/analytics/sources', async (req, res) => {
     bookings.forEach(booking => {
       const note = booking.customerNote || '';
       if (note.includes('Phone Booking')) sourceCounts.phone++;
-      else if (note.includes('Website Booking')) sourceCounts.website++
-
-;
+      else if (note.includes('Website Booking')) sourceCounts.website++;
       else if (note.includes('In Store')) sourceCounts.inStore++;
       else if (note.includes('Manual')) sourceCounts.manual++;
       else sourceCounts.unknown++;
@@ -727,7 +739,7 @@ app.listen(PORT, () => {
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
   console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
-  console.log(`🕐 Now formatting times in human-readable EDT format`);
+  console.log(`🕐 Now formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
