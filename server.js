@@ -133,26 +133,34 @@ app.post('/tools/getAvailability', async (req, res) => {
     
     // Parse the requested datetime - prefer startDate if provided
     let requestedTime = null;
+    let isDateOnly = false;
     const timeInput = startDate || datetime;
     
     if (timeInput) {
-      // If startDate is YYYY-MM-DD format, set time to start of day in EDT (9 AM)
+      // If startDate is YYYY-MM-DD format (date only, no time)
       if (startDate && startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        // Parse as local EDT date at 9 AM
-        requestedTime = new Date(startDate + 'T09:00:00-04:00');
-        console.log(`📅 Requested date (set to 9 AM EDT): ${requestedTime.toISOString()} (from ${startDate})`);
+        isDateOnly = true;
+        // Don't set a specific time, we'll search the whole day
+        console.log(`📅 Requested date only (no specific time): ${startDate}`);
       } else if (timeInput) {
         requestedTime = new Date(timeInput);
-        console.log(`📅 Requested time: ${requestedTime.toISOString()} (${timeInput})`);
+        console.log(`📅 Requested specific time: ${requestedTime.toISOString()} (${timeInput})`);
       }
     }
     
-    // Set search window: if specific time requested, search ±2 hours; otherwise search 7 days
+    // Set search window
     let startAt, endAt;
-    if (requestedTime && !isNaN(requestedTime.getTime())) {
-      startAt = new Date(requestedTime.getTime() - (2 * 60 * 60 * 1000)); // 2 hours before
-      endAt = new Date(requestedTime.getTime() + (2 * 60 * 60 * 1000));   // 2 hours after
+    if (isDateOnly && startDate) {
+      // Search the entire day requested
+      startAt = new Date(startDate + 'T00:00:00-04:00');
+      endAt = new Date(startDate + 'T23:59:59-04:00');
+      console.log(`🔍 Searching full day: ${startAt.toISOString()} to ${endAt.toISOString()}`);
+    } else if (requestedTime && !isNaN(requestedTime.getTime())) {
+      // Search ±2 hours around specific time
+      startAt = new Date(requestedTime.getTime() - (2 * 60 * 60 * 1000));
+      endAt = new Date(requestedTime.getTime() + (2 * 60 * 60 * 1000));
     } else {
+      // No date/time specified, search next 7 days
       startAt = new Date();
       endAt = new Date();
       endAt.setDate(endAt.getDate() + 7);
@@ -193,9 +201,9 @@ app.post('/tools/getAvailability', async (req, res) => {
     
     console.log(`✅ Found ${formattedSlots.length} available slots`);
     
-    // Check if the exact requested time is available
+    // Check if the exact requested time is available (only if specific time was provided)
     let exactMatch = null;
-    if (requestedTime && !isNaN(requestedTime.getTime())) {
+    if (requestedTime && !isNaN(requestedTime.getTime()) && !isDateOnly) {
       const requestedTimeUTC = requestedTime.toISOString();
       exactMatch = formattedSlots.find(slot => slot.start_at_utc === requestedTimeUTC);
       
@@ -651,7 +659,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.1 - Phone Number Validation Fix',
+    version: '2.3.2 - Full Day Search Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -693,7 +701,9 @@ app.get('/analytics/sources', async (req, res) => {
     bookings.forEach(booking => {
       const note = booking.customerNote || '';
       if (note.includes('Phone Booking')) sourceCounts.phone++;
-      else if (note.includes('Website Booking')) sourceCounts.website++;
+      else if (note.includes('Website Booking')) sourceCounts.website++
+
+;
       else if (note.includes('In Store')) sourceCounts.inStore++;
       else if (note.includes('Manual')) sourceCounts.manual++;
       else sourceCounts.unknown++;
