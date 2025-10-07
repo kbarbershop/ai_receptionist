@@ -14,8 +14,8 @@ SERVICE_NAME="square-mcp-server"
 REGION="us-east4"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest"
 
-# Square Credentials
-SQUARE_ACCESS_TOKEN="EAAAl6DLAw75VQSm6qSi4cwNA_Y10kPC4ZtycW-GikXXgDbapqr9aipErTiaXqMr"
+# Square Credentials - CORRECTED TOKEN (Y1OkPC not Y10kPC)
+SQUARE_ACCESS_TOKEN="EAAAl6DLAw75VQSm6qSi4cwNA_Y1OkPC4ZtycW-GikXXgDbapqr9aipErTiaXqMr"
 SQUARE_LOCATION_ID="LCS4MXPZP8J3M"
 
 echo ""
@@ -72,6 +72,7 @@ echo "  - POST /tools/createBooking"
 echo "  - POST /tools/rescheduleBooking"
 echo "  - POST /tools/cancelBooking"
 echo "  - POST /tools/lookupBooking"
+echo "  - POST /tools/generalInquiry"
 echo ""
 echo "🧪 Test Health Check:"
 echo "curl https://square-mcp-server-265357944939.us-east4.run.app/health"

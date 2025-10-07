@@ -79,6 +79,46 @@ const normalizePhoneNumber = (phone) => {
   return phone.startsWith('+') ? phone : `+${digits}`;
 };
 
+// Helper function to format time slot for ElevenLabs
+const formatTimeSlot = (slot) => {
+  try {
+    if (!slot || !slot.start_at) {
+      console.error('Invalid slot:', slot);
+      return slot;
+    }
+
+    const utcDate = new Date(slot.start_at);
+    
+    if (isNaN(utcDate.getTime())) {
+      console.error('Invalid date:', slot.start_at);
+      return slot;
+    }
+    
+    // Convert to EDT (UTC-4)
+    const edtDate = new Date(utcDate.getTime() - (4 * 60 * 60 * 1000));
+    
+    // Get hours and minutes in EDT
+    const hours = edtDate.getUTCHours();
+    const minutes = edtDate.getUTCMinutes();
+    
+    // Format as 12-hour time
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = hours % 12 || 12;
+    const minuteStr = minutes.toString().padStart(2, '0');
+    
+    return {
+      ...slot,
+      start_at_utc: slot.start_at,
+      start_at_edt: edtDate.toISOString().replace('Z', '-04:00'),
+      human_readable: `${hour12}:${minuteStr} ${period}`,
+      time_24h: `${hours.toString().padStart(2, '0')}:${minuteStr}`
+    };
+  } catch (error) {
+    console.error('Error formatting time slot:', error, slot);
+    return slot;
+  }
+};
+
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
 
 /**
@@ -86,12 +126,53 @@ const normalizePhoneNumber = (phone) => {
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
-    const { startDate, serviceVariationId } = req.body;
+    // Accept both 'startDate' (YYYY-MM-DD) and 'datetime' (ISO 8601) for backwards compatibility
+    const { startDate, datetime, serviceVariationId, teamMemberId } = req.body;
     
-    const startDateStr = startDate || new Date().toISOString().split('T')[0];
-    const startAt = new Date(startDateStr + 'T00:00:00Z');
-    const endAt = new Date(startAt);
-    endAt.setDate(endAt.getDate() + 7);
+    console.log(`🔍 getAvailability called:`, { startDate, datetime, serviceVariationId, teamMemberId });
+    
+    // Parse the requested datetime - prefer startDate if provided
+    let requestedTime = null;
+    const timeInput = startDate || datetime;
+    
+    if (timeInput) {
+      // If startDate is YYYY-MM-DD format, set time to start of day in EDT (9 AM)
+      if (startDate && startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Parse as local EDT date at 9 AM
+        requestedTime = new Date(startDate + 'T09:00:00-04:00');
+        console.log(`📅 Requested date (set to 9 AM EDT): ${requestedTime.toISOString()} (from ${startDate})`);
+      } else if (timeInput) {
+        requestedTime = new Date(timeInput);
+        console.log(`📅 Requested time: ${requestedTime.toISOString()} (${timeInput})`);
+      }
+    }
+    
+    // Set search window: if specific time requested, search ±2 hours; otherwise search 7 days
+    let startAt, endAt;
+    if (requestedTime && !isNaN(requestedTime.getTime())) {
+      startAt = new Date(requestedTime.getTime() - (2 * 60 * 60 * 1000)); // 2 hours before
+      endAt = new Date(requestedTime.getTime() + (2 * 60 * 60 * 1000));   // 2 hours after
+    } else {
+      startAt = new Date();
+      endAt = new Date();
+      endAt.setDate(endAt.getDate() + 7);
+    }
+
+    // Build segment filter
+    const segmentFilter = {
+      serviceVariationId: serviceVariationId
+    };
+    
+    // Add team member filter if specified
+    if (teamMemberId) {
+      segmentFilter.teamMemberIdFilter = {
+        any: [teamMemberId]
+      };
+    } else {
+      segmentFilter.teamMemberIdFilter = {
+        any: []
+      };
+    }
 
     const response = await squareClient.bookingsApi.searchAvailability({
       query: {
@@ -101,29 +182,76 @@ app.post('/tools/getAvailability', async (req, res) => {
             startAt: startAt.toISOString(),
             endAt: endAt.toISOString()
           },
-          segmentFilters: [
-            {
-              serviceVariationId: serviceVariationId,
-              teamMemberIdFilter: {
-                any: []
-              }
-            }
-          ]
+          segmentFilters: [segmentFilter]
         }
       }
     });
 
-    // Sanitize BigInt values before sending response
-    const availabilities = sanitizeBigInt(response.result.availabilities || []);
+    // Sanitize and format slots
+    const rawSlots = sanitizeBigInt(response.result.availabilities || []);
+    const formattedSlots = rawSlots.map(formatTimeSlot);
+    
+    console.log(`✅ Found ${formattedSlots.length} available slots`);
+    
+    // Check if the exact requested time is available
+    let exactMatch = null;
+    if (requestedTime && !isNaN(requestedTime.getTime())) {
+      const requestedTimeUTC = requestedTime.toISOString();
+      exactMatch = formattedSlots.find(slot => slot.start_at_utc === requestedTimeUTC);
+      
+      if (exactMatch) {
+        console.log(`✅ EXACT MATCH FOUND: ${exactMatch.human_readable}`);
+        
+        // Return success with exact match
+        return res.json({
+          success: true,
+          isAvailable: true,
+          requestedTime: requestedTimeUTC,
+          requestedTimeFormatted: exactMatch.human_readable,
+          slot: exactMatch,
+          message: `Yes, ${exactMatch.human_readable} is available`
+        });
+      } else {
+        console.log(`❌ Exact time NOT available, finding closest alternatives...`);
+        
+        // Find 3-5 closest alternative times
+        const alternatives = formattedSlots
+          .map(slot => ({
+            ...slot,
+            timeDiff: Math.abs(new Date(slot.start_at_utc).getTime() - requestedTime.getTime())
+          }))
+          .sort((a, b) => a.timeDiff - b.timeDiff)
+          .slice(0, 5)
+          .map(({ timeDiff, ...slot }) => slot);
+        
+        const altTimes = alternatives.map(a => a.human_readable).join(', ');
+        console.log(`📋 Closest alternatives: ${altTimes}`);
+        
+        return res.json({
+          success: true,
+          isAvailable: false,
+          requestedTime: requestedTimeUTC,
+          closestAlternatives: alternatives,
+          message: `That time is not available. The closest available times are: ${altTimes}`
+        });
+      }
+    }
+    
+    // If no specific time requested, return first 10 slots
+    const limitedSlots = formattedSlots.slice(0, 10);
+    if (limitedSlots.length > 0) {
+      console.log(`   First slot: ${limitedSlots[0].human_readable}`);
+      console.log(`   Showing ${limitedSlots.length} of ${formattedSlots.length} total slots`);
+    }
 
     res.json({
       success: true,
-      availableSlots: availabilities,
-      locationId: LOCATION_ID,
-      searchPeriod: {
-        start: startAt.toISOString(),
-        end: endAt.toISOString()
-      }
+      availableSlots: limitedSlots,
+      totalCount: formattedSlots.length,
+      showing: limitedSlots.length,
+      message: formattedSlots.length > 0 
+        ? `Found ${formattedSlots.length} available times. First available: ${limitedSlots[0].human_readable}`
+        : 'No available times found'
     });
   } catch (error) {
     console.error('getAvailability error:', error);
@@ -141,6 +269,14 @@ app.post('/tools/createBooking', async (req, res) => {
   try {
     const { customerName, customerPhone, customerEmail, startTime, serviceVariationId, teamMemberId } = req.body;
 
+    console.log(`📅 createBooking called:`, { 
+      customerName, 
+      customerPhone, 
+      startTime, 
+      serviceVariationId, 
+      teamMemberId 
+    });
+
     if (!customerName || !customerPhone || !startTime || !serviceVariationId) {
       return res.status(400).json({
         success: false,
@@ -148,8 +284,12 @@ app.post('/tools/createBooking', async (req, res) => {
       });
     }
 
-    // Normalize phone number to E.164 format
-    const normalizedPhone = normalizePhoneNumber(customerPhone);
+    // Default team member if not provided
+    const finalTeamMemberId = teamMemberId || 'TMKzhB-WjsDff5rr';
+    console.log(`👤 Using team member: ${finalTeamMemberId}`);
+
+    // Normalize phone number - remove + for Square API consistency
+    const normalizedPhone = normalizePhoneNumber(customerPhone).replace(/^\+/, '');
     console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
 
     // Find or create customer
@@ -157,27 +297,45 @@ app.post('/tools/createBooking', async (req, res) => {
     let isNewCustomer = false;
     
     try {
-      // Search with digits only
-      const searchResponse = await squareClient.customersApi.searchCustomers({
-        query: {
-          filter: {
-            phoneNumber: {
-              exact: normalizedPhone.replace(/\D/g, '')
+      // Try searching with multiple phone formats to handle existing customers
+      const phoneFormats = [
+        normalizedPhone,                    // 15716995142
+        `+${normalizedPhone}`,              // +15716995142
+        normalizedPhone.substring(1)        // 5716995142
+      ];
+      
+      let searchResponse;
+      let foundCustomer = false;
+      
+      for (const phoneFormat of phoneFormats) {
+        searchResponse = await squareClient.customersApi.searchCustomers({
+          query: {
+            filter: {
+              phoneNumber: {
+                exact: phoneFormat
+              }
             }
           }
+        });
+        
+        if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
+          foundCustomer = true;
+          console.log(`✅ Found existing customer with phone format: ${phoneFormat}`);
+          break;
         }
-      });
+      }
 
-      if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
+      if (foundCustomer) {
         customerId = searchResponse.result.customers[0].id;
         console.log(`✅ Found existing customer: ${customerId}`);
       } else {
         const nameParts = customerName.split(' ');
         const createResponse = await squareClient.customersApi.createCustomer({
-          givenName: nameParts[0],
-          familyName: nameParts.slice(1).join(' ') || '',
-          phoneNumber: normalizedPhone,  // Use normalized E.164 format
-          emailAddress: customerEmail,
+          idempotency_key: randomUUID(),
+          given_name: nameParts[0],
+          family_name: nameParts.slice(1).join(' ') || '',
+          phone_number: normalizedPhone,
+          email_address: customerEmail,
           note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
         });
         customerId = createResponse.result.customer.id;
@@ -189,37 +347,59 @@ app.post('/tools/createBooking', async (req, res) => {
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
 
-    // Create booking - serviceVariationVersion should be BigInt
+    // Parse startTime - convert EDT to UTC if needed
+    let bookingStartTime = startTime;
+    
+    // Check if time is in EDT format (ends with -04:00)
+    if (startTime.includes('-04:00')) {
+      // Convert EDT to UTC
+      const edtDate = new Date(startTime);
+      bookingStartTime = edtDate.toISOString(); // This converts to UTC with Z
+      console.log(`🕐 Converted EDT to UTC: ${startTime} → ${bookingStartTime}`);
+    } else if (startTime.includes('human_readable') || startTime.includes('start_at_edt')) {
+      // Agent sent the formatted object - extract UTC time
+      try {
+        const timeObj = JSON.parse(startTime);
+        bookingStartTime = timeObj.start_at_utc || timeObj.start_at;
+      } catch {
+        // Just use as-is if not JSON
+      }
+    }
+
+    console.log(`⏰ Booking time (UTC): ${bookingStartTime}`);
+
+    // Create booking
     const bookingResponse = await squareClient.bookingsApi.createBooking({
       booking: {
         locationId: LOCATION_ID,
-        startAt: startTime,
+        startAt: bookingStartTime,
         customerId: customerId,
         customerNote: BOOKING_SOURCES.PHONE,
         appointmentSegments: [{
           serviceVariationId: serviceVariationId,
-          teamMemberId: teamMemberId,
+          teamMemberId: finalTeamMemberId,
           serviceVariationVersion: BigInt(Date.now())
         }]
       },
       idempotencyKey: randomUUID()
     });
 
-    // Sanitize booking response
     const booking = sanitizeBigInt(bookingResponse.result.booking);
+    console.log(`✅ Booking created: ${booking.id}`);
 
     res.json({
       success: true,
       booking: booking,
       bookingSource: BOOKING_SOURCES.PHONE,
-      message: `Appointment created successfully for ${customerName} at ${startTime}`,
+      message: `Appointment created successfully for ${customerName}`,
       newCustomer: isNewCustomer
     });
   } catch (error) {
-    console.error('createBooking error:', error);
+    console.error('❌ createBooking error:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: error.errors || []
     });
   }
 });
@@ -324,14 +504,13 @@ app.post('/tools/lookupBooking', async (req, res) => {
       });
     }
 
-    // Normalize phone for search
-    const normalizedPhone = normalizePhoneNumber(customerPhone);
+    const normalizedPhone = normalizePhoneNumber(customerPhone).replace(/^\+/, '');
 
     const searchResponse = await squareClient.customersApi.searchCustomers({
       query: {
         filter: {
           phoneNumber: {
-            exact: normalizedPhone.replace(/\D/g, '')
+            exact: normalizedPhone
           }
         }
       }
@@ -380,21 +559,15 @@ app.post('/tools/lookupBooking', async (req, res) => {
 });
 
 /**
- * General Inquiry - Handles business hours, services, and team members
- * Single endpoint that routes to appropriate Square API based on inquiry type
+ * General Inquiry
  */
 app.post('/tools/generalInquiry', async (req, res) => {
   try {
     const { inquiryType } = req.body;
-
-    // Default to returning all info if no type specified
     const returnAll = !inquiryType;
 
-    let result = {
-      success: true
-    };
+    let result = { success: true };
 
-    // Get business hours and location info
     if (returnAll || inquiryType === 'hours' || inquiryType === 'location') {
       try {
         const locationResponse = await squareClient.locationsApi.retrieveLocation(LOCATION_ID);
@@ -411,13 +584,9 @@ app.post('/tools/generalInquiry', async (req, res) => {
       }
     }
 
-    // Get services and pricing
     if (returnAll || inquiryType === 'services' || inquiryType === 'pricing') {
       try {
-        const catalogResponse = await squareClient.catalogApi.listCatalog(
-          undefined,
-          'ITEM'
-        );
+        const catalogResponse = await squareClient.catalogApi.listCatalog(undefined, 'ITEM');
 
         result.services = (catalogResponse.result.objects || []).map(item => ({
           id: item.id,
@@ -440,7 +609,6 @@ app.post('/tools/generalInquiry', async (req, res) => {
       }
     }
 
-    // Get team members
     if (returnAll || inquiryType === 'staff' || inquiryType === 'barbers' || inquiryType === 'team') {
       try {
         const teamResponse = await squareClient.teamApi.searchTeamMembers({
@@ -483,7 +651,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.2.4 - BigInt Serialization Fix',
+    version: '2.3.0 - Human-Readable Time Formatting for ElevenLabs',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -507,10 +675,7 @@ app.get('/analytics/sources', async (req, res) => {
     past30Days.setDate(past30Days.getDate() - 30);
 
     const bookingsResponse = await squareClient.bookingsApi.listBookings(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      undefined, undefined, undefined, undefined,
       LOCATION_ID,
       past30Days.toISOString(),
       now.toISOString()
@@ -551,6 +716,7 @@ app.listen(PORT, () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
+  console.log(`🕐 Now formatting times in human-readable EDT format`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
