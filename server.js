@@ -651,7 +651,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.0 - Human-Readable Time Formatting for ElevenLabs',
+    version: '2.3.1 - Phone Number Validation Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -716,6 +716,7 @@ app.listen(PORT, () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
+  console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
   console.log(`🕐 Now formatting times in human-readable EDT format`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
