@@ -114,7 +114,7 @@ const normalizePhoneNumber = (phone) => {
   return phone.startsWith('+') ? phone : `+${digits}`;
 };
 
-// 🔥 FIX: Helper function to format UTC time to EDT human-readable format
+// 🔥 v2.7.6 FIX: Helper function to format UTC time to EDT human-readable format with explicit month names
 const formatUTCtoEDT = (utcTimeString) => {
   if (!utcTimeString) return null;
   
@@ -126,29 +126,19 @@ const formatUTCtoEDT = (utcTimeString) => {
       return utcTimeString;
     }
     
-    // Convert to EDT using toLocaleString
-    const edtString = utcDate.toLocaleString('en-US', {
+    // Convert to EDT with explicit month name and weekday
+    const formatted = utcDate.toLocaleString('en-US', {
       timeZone: 'America/New_York',
-      hour12: false,
+      weekday: 'short',  // Mon, Tue, Wed, etc.
+      month: 'short',    // Jan, Feb, Mar, etc.
+      day: 'numeric',
       year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
-      second: '2-digit'
+      hour12: true
     });
     
-    const [datePart, timePart] = edtString.split(', ');
-    const [month, day, year] = datePart.split('/');
-    const [hours, minutes, seconds] = timePart.split(':');
-    
-    // Format as 12-hour time
-    const hour24 = parseInt(hours, 10);
-    const period = hour24 >= 12 ? 'PM' : 'AM';
-    const hour12 = hour24 % 12 || 12;
-    const minuteStr = minutes.toString().padStart(2, '0');
-    
-    return `${month}/${day}/${year} at ${hour12}:${minuteStr} ${period} EDT`;
+    return `${formatted} EDT`;
   } catch (error) {
     console.error('❌ Error formatting time:', error);
     return utcTimeString;
@@ -928,7 +918,7 @@ app.post('/tools/cancelBooking', async (req, res) => {
 });
 
 /**
- * Lookup Booking by Phone - 🔥 NOW FORMATS TIMES TO EDT!
+ * Lookup Booking by Phone - 🔥 v2.7.6: Fixed date format with explicit month names
  */
 app.post('/tools/lookupBooking', async (req, res) => {
   try {
@@ -996,14 +986,14 @@ app.post('/tools/lookupBooking', async (req, res) => {
     const customer = sanitizeBigInt(searchResponse.result.customers[0]);
     const rawBookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
     
-    // 🔥 FIX: Format booking times to EDT for display
+    // 🔥 v2.7.6 FIX: Format booking times to EDT with explicit month names (e.g., "Thu, Oct 10, 2025, 9:00 AM EDT")
     const bookings = rawBookings.map(booking => ({
       ...booking,
       startAt_formatted: formatUTCtoEDT(booking.startAt),
       startAt_utc: booking.startAt  // Keep original UTC time
     }));
 
-    console.log(`✅ Found ${bookings.length} bookings, formatted times to EDT`);
+    console.log(`✅ Found ${bookings.length} bookings, formatted times to EDT with explicit month names`);
 
     res.json({
       success: true,
@@ -1114,7 +1104,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.5 - Fixed past date requests (rejects 2024 dates when in 2025)',
+    version: '2.7.6 - Fixed date format confusion (now uses "Thu, Oct 10, 2025" instead of "10/10/2025")',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1196,6 +1186,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.3: Fixed "Bookings can only be made in the future" error!`);
   console.log(`🔧 v2.7.4: Fixed invalid time range error (end_at before start_at)!`);
   console.log(`🔧 v2.7.5: Fixed past date requests (rejects 2024 dates when in 2025)!`);
+  console.log(`🔧 v2.7.6: Fixed date format confusion - now uses "Thu, Oct 10, 2025" instead of "10/10/2025"!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
