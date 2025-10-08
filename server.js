@@ -289,7 +289,7 @@ app.post('/tools/getCurrentDateTime', async (req, res) => {
 
 /**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
- * 🔥 v2.7.5: FIXED - Reject dates in the past
+ * 🔥 v2.7.7: ENHANCED ERROR LOGGING for Square API errors
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -381,7 +381,8 @@ app.post('/tools/getAvailability', async (req, res) => {
       };
     }
 
-    const response = await squareClient.bookingsApi.searchAvailability({
+    // 🔥 v2.7.7: Log the exact parameters being sent to Square API
+    const apiParams = {
       query: {
         filter: {
           locationId: LOCATION_ID,
@@ -392,7 +393,10 @@ app.post('/tools/getAvailability', async (req, res) => {
           segmentFilters: [segmentFilter]
         }
       }
-    });
+    };
+    console.log(`🔧 Calling Square searchAvailability with:`, JSON.stringify(apiParams, null, 2));
+
+    const response = await squareClient.bookingsApi.searchAvailability(apiParams);
 
     // Get raw availability slots
     const rawSlots = sanitizeBigInt(response.result.availabilities || []);
@@ -519,10 +523,22 @@ app.post('/tools/getAvailability', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('getAvailability error:', error);
+    // 🔥 v2.7.7: Enhanced error logging - capture Square API details
+    console.error('❌ getAvailability error:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Log detailed error information from Square API
+    if (error.errors && Array.isArray(error.errors)) {
+      console.error('❌ Square API errors:', JSON.stringify(error.errors, null, 2));
+    }
+    if (error.result && error.result.errors) {
+      console.error('❌ Square result errors:', JSON.stringify(error.result.errors, null, 2));
+    }
+    
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: error.errors || error.result?.errors || []
     });
   }
 });
@@ -1104,7 +1120,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.6 - Fixed date format confusion (now uses "Thu, Oct 10, 2025" instead of "10/10/2025")',
+    version: '2.7.7 - Enhanced error logging for Square API debugging',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1187,6 +1203,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.4: Fixed invalid time range error (end_at before start_at)!`);
   console.log(`🔧 v2.7.5: Fixed past date requests (rejects 2024 dates when in 2025)!`);
   console.log(`🔧 v2.7.6: Fixed date format confusion - now uses "Thu, Oct 10, 2025" instead of "10/10/2025"!`);
+  console.log(`🔧 v2.7.7: Enhanced error logging to capture detailed Square API errors!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
