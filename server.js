@@ -841,7 +841,7 @@ app.post('/tools/addServicesToBooking', async (req, res) => {
 });
 
 /**
- * Reschedule Existing Booking - 🔥 v2.7.1 FIX: Only send writable fields
+ * Reschedule Existing Booking - 🔥 v2.7.9 FIX: Timezone validation and auto-correction
  */
 app.post('/tools/rescheduleBooking', async (req, res) => {
   try {
@@ -854,17 +854,83 @@ app.post('/tools/rescheduleBooking', async (req, res) => {
       });
     }
 
+    console.log(`📅 rescheduleBooking called:`, { bookingId, newStartTime });
+
+    // 🔥 NEW: Validate and fix timezone
+    let finalStartTime = newStartTime;
+    
+    // Check if timezone offset is missing
+    if (!newStartTime.includes('-04:00') && !newStartTime.includes('-05:00') && !newStartTime.includes('Z')) {
+      console.log(`⚠️ WARNING: newStartTime missing timezone offset: ${newStartTime}`);
+      
+      // Parse the time and assume it's meant to be EDT
+      const dateObj = new Date(newStartTime);
+      
+      // Get EDT offset (currently -04:00, changes to -05:00 in winter)
+      const now = new Date();
+      const isEDT = now.getMonth() >= 2 && now.getMonth() < 10; // March-October
+      const offset = isEDT ? '-04:00' : '-05:00';
+      
+      // Reconstruct with proper timezone
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const hours = String(dateObj.getHours()).padStart(2, '0');
+      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+      
+      finalStartTime = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offset}`;
+      console.log(`✅ Fixed timezone: ${newStartTime} → ${finalStartTime}`);
+    }
+    
+    // 🔥 NEW: If time ends with Z (UTC), convert to EDT
+    if (finalStartTime.endsWith('Z')) {
+      console.log(`⚠️ WARNING: Received UTC time (${finalStartTime}), converting to EDT...`);
+      const utcDate = new Date(finalStartTime);
+      
+      // Convert to EDT string
+      const edtString = utcDate.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      
+      const [datePart, timePart] = edtString.split(', ');
+      const [month, day, year] = datePart.split('/');
+      const [hours, minutes, seconds] = timePart.split(':');
+      
+      const now = new Date();
+      const isEDT = now.getMonth() >= 2 && now.getMonth() < 10;
+      const offset = isEDT ? '-04:00' : '-05:00';
+      
+      finalStartTime = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hours}:${minutes}:${seconds}${offset}`;
+      console.log(`✅ Converted UTC to EDT: ${newStartTime} → ${finalStartTime}`);
+    }
+
+    console.log(`⏰ Final booking time: ${finalStartTime}`);
+
     const getResponse = await squareClient.bookingsApi.retrieveBooking(bookingId);
     const currentBooking = getResponse.result.booking;
     const originalSource = currentBooking.customerNote || BOOKING_SOURCES.PHONE;
 
-    // 🔥 FIX: Only send writable fields to avoid "read-only field" errors
+    // Convert finalStartTime (EDT) to UTC for Square API
+    const edtDate = new Date(finalStartTime);
+    const utcTimeForSquare = edtDate.toISOString();
+    
+    console.log(`🔄 Sending to Square API: ${utcTimeForSquare} (${finalStartTime} EDT)`);
+
+    // Only send writable fields to avoid "read-only field" errors
     const updateResponse = await squareClient.bookingsApi.updateBooking(
       bookingId,
       {
         booking: {
           locationId: currentBooking.locationId,
-          startAt: newStartTime,
+          startAt: utcTimeForSquare,  // Square expects UTC
           customerId: currentBooking.customerId,
           customerNote: `${originalSource} (Rescheduled via phone)`,
           appointmentSegments: currentBooking.appointmentSegments.map(segment => ({
@@ -878,14 +944,23 @@ app.post('/tools/rescheduleBooking', async (req, res) => {
     );
 
     const booking = sanitizeBigInt(updateResponse.result.booking);
+    const humanReadableTime = formatUTCtoEDT(booking.startAt);
+
+    console.log(`✅ Rescheduled to ${humanReadableTime} (${booking.startAt} UTC)`);
 
     res.json({
       success: true,
       booking: booking,
-      message: `Appointment rescheduled to ${newStartTime}`
+      message: `Appointment rescheduled to ${humanReadableTime}`,
+      debugInfo: {
+        receivedTime: newStartTime,
+        correctedTime: finalStartTime,
+        sentToSquare: utcTimeForSquare,
+        finalTime: humanReadableTime
+      }
     });
   } catch (error) {
-    console.error('rescheduleBooking error:', error);
+    console.error('❌ rescheduleBooking error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -1147,7 +1222,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.8 - Fixed lookupBooking to separate active and cancelled bookings',
+    version: '2.7.9 - Fixed timezone validation and auto-correction in rescheduleBooking',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1232,6 +1307,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.6: Fixed date format confusion - now uses "Thu, Oct 10, 2025" instead of "10/10/2025"!`);
   console.log(`🔧 v2.7.7: Enhanced error logging to capture detailed Square API errors!`);
   console.log(`🔧 v2.7.8: FIXED lookupBooking - now separates active and cancelled bookings!`);
+  console.log(`🔥 v2.7.9: FIXED timezone handling in rescheduleBooking - auto-validates and corrects!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
