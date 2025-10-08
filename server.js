@@ -796,7 +796,7 @@ app.post('/tools/addServicesToBooking', async (req, res) => {
 });
 
 /**
- * Reschedule Existing Booking
+ * Reschedule Existing Booking - 🔥 v2.7.1 FIX: Only send writable fields
  */
 app.post('/tools/rescheduleBooking', async (req, res) => {
   try {
@@ -813,13 +813,20 @@ app.post('/tools/rescheduleBooking', async (req, res) => {
     const currentBooking = getResponse.result.booking;
     const originalSource = currentBooking.customerNote || BOOKING_SOURCES.PHONE;
 
+    // 🔥 FIX: Only send writable fields to avoid "read-only field" errors
     const updateResponse = await squareClient.bookingsApi.updateBooking(
       bookingId,
       {
         booking: {
-          ...currentBooking,
+          locationId: currentBooking.locationId,
           startAt: newStartTime,
+          customerId: currentBooking.customerId,
           customerNote: `${originalSource} (Rescheduled via phone)`,
+          appointmentSegments: currentBooking.appointmentSegments.map(segment => ({
+            serviceVariationId: segment.serviceVariationId,
+            teamMemberId: segment.teamMemberId,
+            serviceVariationVersion: segment.serviceVariationVersion
+          })),
           version: currentBooking.version
         }
       }
@@ -1068,7 +1075,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.0 - Improved Time Matching + Date Context',
+    version: '2.7.1 - Fixed Reschedule Read-Only Fields',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1145,6 +1152,7 @@ app.listen(PORT, () => {
   console.log(`➕ v2.5.0: addServicesToBooking endpoint with conflict detection`);
   console.log(`✅ v2.6.0: FIXED overlap detection - back-to-back OK, overlaps blocked!`);
   console.log(`🆕 v2.7.0: Added getCurrentDateTime endpoint + improved time matching (1-min tolerance)!`);
+  console.log(`🔧 v2.7.1: Fixed rescheduleBooking read-only fields error!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
