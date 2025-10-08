@@ -79,7 +79,7 @@ const normalizePhoneNumber = (phone) => {
   return phone.startsWith('+') ? phone : `+${digits}`;
 };
 
-// 🐛 FIX: Helper function to format time slot for ElevenLabs with both snake_case and camelCase support
+// Helper function to format time slot for ElevenLabs with both snake_case and camelCase support
 const formatTimeSlot = (slot) => {
   try {
     // Support both naming conventions from Square API
@@ -141,7 +141,7 @@ const formatTimeSlot = (slot) => {
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
 
 /**
- * Get Available Time Slots
+ * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -214,25 +214,47 @@ app.post('/tools/getAvailability', async (req, res) => {
       }
     });
 
-    // Sanitize and format slots
+    // Get raw availability slots
     const rawSlots = sanitizeBigInt(response.result.availabilities || []);
     console.log(`✅ Found ${rawSlots.length} raw slots from Square API`);
     
-    // 🐛 FIX: Log first raw slot to debug field names
-    if (rawSlots.length > 0) {
-      console.log(`📋 First raw slot structure:`, JSON.stringify(rawSlots[0]).substring(0, 200));
+    // 🔥 NEW: Fetch existing bookings to filter out already-booked times
+    const bookingsResponse = await squareClient.bookingsApi.listBookings(
+      undefined, // limit
+      undefined, // cursor
+      undefined, // customer_id
+      undefined, // team_member_id
+      LOCATION_ID,
+      startAt.toISOString(),
+      endAt.toISOString()
+    );
+    
+    const existingBookings = bookingsResponse.result.bookings || [];
+    const bookedTimes = new Set(existingBookings.map(b => b.startAt));
+    
+    console.log(`📋 Found ${existingBookings.length} existing bookings to exclude`);
+    if (existingBookings.length > 0) {
+      console.log(`🚫 Booked times:`, Array.from(bookedTimes));
     }
     
-    const formattedSlots = rawSlots.map(formatTimeSlot);
+    // Filter out already-booked slots
+    const availableSlots = rawSlots.filter(slot => {
+      const slotTime = slot.start_at || slot.startAt;
+      return !bookedTimes.has(slotTime);
+    });
     
-    // 🐛 FIX: Enhanced logging to debug formatting
+    console.log(`✅ After filtering: ${availableSlots.length} truly available slots (removed ${rawSlots.length - availableSlots.length} booked slots)`);
+    
+    const formattedSlots = availableSlots.map(formatTimeSlot);
+    
+    // Enhanced logging
     if (formattedSlots.length > 0) {
       console.log(`✅ Successfully formatted ${formattedSlots.length} slots`);
       console.log(`   First slot human_readable: ${formattedSlots[0].human_readable}`);
       console.log(`   First slot start_at_utc: ${formattedSlots[0].start_at_utc}`);
       console.log(`   Last slot human_readable: ${formattedSlots[formattedSlots.length - 1].human_readable}`);
     } else {
-      console.log(`⚠️ No slots were formatted (formattedSlots.length = 0)`);
+      console.log(`⚠️ No slots available after filtering`);
     }
     
     // Check if the exact requested time is available (only if specific time was provided)
@@ -279,7 +301,7 @@ app.post('/tools/getAvailability', async (req, res) => {
       }
     }
     
-    // 🔥 FIX: Return ALL slots so AI knows actual first and last appointment times
+    // Return ALL truly available slots
     if (formattedSlots.length > 0) {
       const firstTime = formattedSlots[0].human_readable;
       const lastTime = formattedSlots[formattedSlots.length - 1].human_readable;
@@ -336,7 +358,7 @@ app.post('/tools/createBooking', async (req, res) => {
     const finalTeamMemberId = teamMemberId || 'TMKzhB-WjsDff5rr';
     console.log(`👤 Using team member: ${finalTeamMemberId}`);
 
-    // 🔥 FIX: Keep the + prefix for Square Customer API (they support +15551234567 format)
+    // Keep the + prefix for Square Customer API
     const normalizedPhone = normalizePhoneNumber(customerPhone);
     console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
 
@@ -716,7 +738,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.6 - Phone Format Fix',
+    version: '2.4.0 - Filter Booked Slots',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -756,7 +778,8 @@ app.get('/analytics/sources', async (req, res) => {
     };
 
     bookings.forEach(booking => {
-      const note = booking.customerNote || '';
+      const note = booking.customerNote || ''
+;
       if (note.includes('Phone Booking')) sourceCounts.phone++;
       else if (note.includes('Website Booking')) sourceCounts.website++;
       else if (note.includes('In Store')) sourceCounts.inStore++;
@@ -785,6 +808,7 @@ app.listen(PORT, () => {
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
+  console.log(`🚫 NEW v2.4.0: Filters out already-booked time slots!`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
