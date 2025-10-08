@@ -23,6 +23,19 @@ const BOOKING_SOURCES = {
   MANUAL: 'Manual Booking'
 };
 
+// 🔥 NEW: Service name to variation ID mapping
+const SERVICE_MAPPINGS = {
+  'Regular Haircut': '7XPUHGDLY4N3H2OWTHMIABKF',
+  'Beard Trim': 'SPUX6LRBS6RHFBX3MSRASG2J',
+  'Beard Sculpt': 'UH5JRVCJGAB2KISNBQ7KMVVQ',
+  'Ear Waxing': 'ALZZEN4DO6JCNMC6YPXN6DPH',
+  'Nose Waxing': 'VVGK7I7L6BHTG7LFKLAIRHBZ',
+  'Eyebrow Waxing': '3TV5CVRXCB62BWIWVY6OCXIC',
+  'Paraffin': '7ND6OIFTRLJEPMDBBI3B3ELT',
+  'Gold': '7UKWUIF4CP7YR27FI52DWPEN',
+  'Silver': '7PFUQVFMALHIPDAJSYCBKBYV'
+};
+
 // Helper function to safely convert BigInt to string
 const safeBigIntToString = (value) => {
   if (value === null || value === undefined) return null;
@@ -177,6 +190,22 @@ const formatTimeSlot = (slot) => {
     console.error('❌ Error formatting time slot:', error, slot);
     return slot;
   }
+};
+
+// 🔥 NEW: Helper function to get service duration in milliseconds
+const getServiceDuration = (serviceVariationId) => {
+  const durations = {
+    '7XPUHGDLY4N3H2OWTHMIABKF': 1800000, // Regular Haircut - 30 min
+    'SPUX6LRBS6RHFBX3MSRASG2J': 1800000, // Beard Trim - 30 min
+    'UH5JRVCJGAB2KISNBQ7KMVVQ': 1800000, // Beard Sculpt - 30 min
+    'ALZZEN4DO6JCNMC6YPXN6DPH': 600000,  // Ear Waxing - 10 min
+    'VVGK7I7L6BHTG7LFKLAIRHBZ': 600000,  // Nose Waxing - 10 min
+    '3TV5CVRXCB62BWIWVY6OCXIC': 600000,  // Eyebrow Waxing - 10 min
+    '7ND6OIFTRLJEPMDBBI3B3ELT': 1800000, // Paraffin - 30 min
+    '7UKWUIF4CP7YR27FI52DWPEN': 5400000, // Gold - 90 min
+    '7PFUQVFMALHIPDAJSYCBKBYV': 3600000  // Silver - 60 min
+  };
+  return durations[serviceVariationId] || 1800000; // Default 30 min
 };
 
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
@@ -501,12 +530,135 @@ app.post('/tools/createBooking', async (req, res) => {
     res.json({
       success: true,
       booking: booking,
+      bookingId: booking.id,
       bookingSource: BOOKING_SOURCES.PHONE,
       message: `Appointment created successfully for ${customerName}`,
       newCustomer: isNewCustomer
     });
   } catch (error) {
     console.error('❌ createBooking error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: error.errors || []
+    });
+  }
+});
+
+/**
+ * 🔥 NEW: Add Services to Existing Booking
+ * This handles adding multiple services to an existing appointment
+ */
+app.post('/tools/addServicesToBooking', async (req, res) => {
+  try {
+    const { bookingId, serviceNames } = req.body;
+
+    console.log(`➕ addServicesToBooking called:`, { bookingId, serviceNames });
+
+    if (!bookingId || !serviceNames || !Array.isArray(serviceNames) || serviceNames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: bookingId and serviceNames (array)'
+      });
+    }
+
+    // Get existing booking
+    const getResponse = await squareClient.bookingsApi.retrieveBooking(bookingId);
+    const currentBooking = getResponse.result.booking;
+    
+    console.log(`📋 Current booking has ${currentBooking.appointmentSegments.length} service(s)`);
+
+    // Get current team member (barber)
+    const currentTeamMemberId = currentBooking.appointmentSegments[0].teamMemberId;
+    console.log(`👤 Current barber: ${currentTeamMemberId}`);
+
+    // Convert service names to variation IDs
+    const newSegments = [];
+    const invalidServices = [];
+    
+    for (const serviceName of serviceNames) {
+      const variationId = SERVICE_MAPPINGS[serviceName];
+      if (!variationId) {
+        invalidServices.push(serviceName);
+        continue;
+      }
+
+      // Check if barber can perform this service
+      // All services are available to both barbers: TMeze5z5YYPIgXCe and TMKzhB-WjsDff5rr
+      newSegments.push({
+        serviceVariationId: variationId,
+        teamMemberId: currentTeamMemberId,
+        serviceVariationVersion: BigInt(Date.now())
+      });
+    }
+
+    if (invalidServices.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid service names: ${invalidServices.join(', ')}. Valid names are: ${Object.keys(SERVICE_MAPPINGS).join(', ')}`
+      });
+    }
+
+    // Calculate total duration to check for time conflicts
+    const currentDuration = getServiceDuration(currentBooking.appointmentSegments[0].serviceVariationId);
+    const additionalDuration = newSegments.reduce((total, seg) => total + getServiceDuration(seg.serviceVariationId), 0);
+    const totalDuration = currentDuration + additionalDuration;
+
+    const bookingStart = new Date(currentBooking.startAt);
+    const bookingEnd = new Date(bookingStart.getTime() + totalDuration);
+
+    console.log(`⏱️  Current duration: ${currentDuration / 60000} min, Additional: ${additionalDuration / 60000} min, Total: ${totalDuration / 60000} min`);
+    console.log(`🕐 Booking window: ${bookingStart.toISOString()} to ${bookingEnd.toISOString()}`);
+
+    // Check for conflicts - see if there's another booking immediately after
+    const checkEnd = new Date(bookingEnd.getTime() + (30 * 60 * 1000)); // Check 30 min buffer
+    const conflictResponse = await squareClient.bookingsApi.listBookings(
+      undefined, undefined, undefined, currentTeamMemberId,
+      LOCATION_ID,
+      bookingEnd.toISOString(),
+      checkEnd.toISOString()
+    );
+
+    const conflicts = (conflictResponse.result.bookings || []).filter(b => b.id !== bookingId);
+    
+    if (conflicts.length > 0) {
+      const nextBookingTime = formatUTCtoEDT(conflicts[0].startAt);
+      return res.json({
+        success: false,
+        hasConflict: true,
+        message: `I cannot add these services to your ${formatUTCtoEDT(currentBooking.startAt)} appointment because we have another customer scheduled at ${nextBookingTime}. The additional services would take ${additionalDuration / 60000} minutes. Would you like to book a separate appointment, or when you arrive for your appointment, you can ask the barber if they have time to add these services.`,
+        nextBooking: formatUTCtoEDT(conflicts[0].startAt),
+        additionalDuration: additionalDuration / 60000
+      });
+    }
+
+    // No conflict - update booking with all segments
+    const allSegments = [...currentBooking.appointmentSegments, ...newSegments];
+
+    const updateResponse = await squareClient.bookingsApi.updateBooking(
+      bookingId,
+      {
+        booking: {
+          ...currentBooking,
+          appointmentSegments: allSegments,
+          version: currentBooking.version
+        }
+      }
+    );
+
+    const updatedBooking = sanitizeBigInt(updateResponse.result.booking);
+    console.log(`✅ Updated booking ${bookingId} with ${newSegments.length} additional service(s)`);
+
+    res.json({
+      success: true,
+      booking: updatedBooking,
+      servicesAdded: serviceNames,
+      totalServices: allSegments.length,
+      message: `Successfully added ${serviceNames.join(', ')} to your appointment. Your appointment will now take approximately ${totalDuration / 60000} minutes.`
+    });
+
+  } catch (error) {
+    console.error('❌ addServicesToBooking error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -788,12 +940,13 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.4.1 - Fix lookupBooking timezone',
+    version: '2.5.0 - Add Services to Booking',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
         'POST /tools/getAvailability',
         'POST /tools/createBooking',
+        'POST /tools/addServicesToBooking',
         'POST /tools/rescheduleBooking',
         'POST /tools/cancelBooking',
         'POST /tools/lookupBooking',
@@ -801,7 +954,8 @@ app.get('/health', (req, res) => {
       ],
       analytics: ['GET /analytics/sources']
     },
-    bookingSources: BOOKING_SOURCES
+    bookingSources: BOOKING_SOURCES,
+    availableServices: Object.keys(SERVICE_MAPPINGS)
   });
 });
 
@@ -859,11 +1013,14 @@ app.listen(PORT, () => {
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
   console.log(`🚫 v2.4.0: Filters out already-booked time slots!`);
   console.log(`🕐 v2.4.1: lookupBooking now formats times to EDT!`);
-  console.log(`\n🌐 Endpoints available (6 tools):`);
+  console.log(`➕ v2.5.0: NEW addServicesToBooking endpoint with conflict detection!`);
+  console.log(`\n🌐 Endpoints available (7 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
+  console.log(`   POST /tools/addServicesToBooking`);
   console.log(`   POST /tools/rescheduleBooking`);
   console.log(`   POST /tools/cancelBooking`);
   console.log(`   POST /tools/lookupBooking`);
   console.log(`   POST /tools/generalInquiry`);
+  console.log(`\n📋 Available services:`, Object.keys(SERVICE_MAPPINGS).join(', '));
 });
