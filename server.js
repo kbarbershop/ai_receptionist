@@ -279,22 +279,19 @@ app.post('/tools/getAvailability', async (req, res) => {
       }
     }
     
-    // 🔥 FIX: Return ALL slots, not just first 10!
-    // This ensures the AI knows the actual first and last appointment times
-    const allSlots = formattedSlots;
-    
-    if (allSlots.length > 0) {
-      const firstTime = allSlots[0].human_readable;
-      const lastTime = allSlots[allSlots.length - 1].human_readable;
-      console.log(`   Returning ${allSlots.length} slots: ${firstTime} to ${lastTime}`);
+    // 🔥 FIX: Return ALL slots so AI knows actual first and last appointment times
+    if (formattedSlots.length > 0) {
+      const firstTime = formattedSlots[0].human_readable;
+      const lastTime = formattedSlots[formattedSlots.length - 1].human_readable;
+      console.log(`   Returning ${formattedSlots.length} slots: ${firstTime} to ${lastTime}`);
       
       res.json({
         success: true,
-        availableSlots: allSlots,
-        totalCount: allSlots.length,
+        availableSlots: formattedSlots,
+        totalCount: formattedSlots.length,
         firstAvailable: firstTime,
         lastAvailable: lastTime,
-        message: `We have ${allSlots.length} available times from ${firstTime} to ${lastTime}`
+        message: `We have ${formattedSlots.length} available times from ${firstTime} to ${lastTime}`
       });
     } else {
       res.json({
@@ -765,7 +762,8 @@ app.listen(PORT, () => {
   console.log(`✅ Square Booking Server running on port ${PORT}`);
   console.log(`📍 Location: K BARBERSHOP (${LOCATION_ID})`);
   console.log(`🔧 Format: ElevenLabs Server Tools`);
-  console.log(`📦 SDK: Square v43.0.2 (Legacy API)`)  console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
+  console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
+  console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
   console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
