@@ -1,0 +1,1 @@
+fastapi==0.110.1\nuvicorn==0.25.0\ngunicorn\npython-dotenv==1.1.1\nrequests==2.32.5\npytz==2025.2\npydantic==2.11.9\ngoogle-cloud-firestore==2.21.0\nbcrypt==5.0.0\npython-jose==3.5.0\npython-multipart==0.0.20\nemail-validator==2.3.0\n
