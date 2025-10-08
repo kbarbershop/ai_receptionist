@@ -546,7 +546,7 @@ app.post('/tools/createBooking', async (req, res) => {
 });
 
 /**
- * 🔥 NEW: Add Services to Existing Booking
+ * 🔥 FIXED: Add Services to Existing Booking - NO OVERLAPS ALLOWED
  * This handles adding multiple services to an existing appointment
  */
 app.post('/tools/addServicesToBooking', async (req, res) => {
@@ -583,8 +583,6 @@ app.post('/tools/addServicesToBooking', async (req, res) => {
         continue;
       }
 
-      // Check if barber can perform this service
-      // All services are available to both barbers: TMeze5z5YYPIgXCe and TMKzhB-WjsDff5rr
       newSegments.push({
         serviceVariationId: variationId,
         teamMemberId: currentTeamMemberId,
@@ -610,29 +608,63 @@ app.post('/tools/addServicesToBooking', async (req, res) => {
     console.log(`⏱️  Current duration: ${currentDuration / 60000} min, Additional: ${additionalDuration / 60000} min, Total: ${totalDuration / 60000} min`);
     console.log(`🕐 Booking window: ${bookingStart.toISOString()} to ${bookingEnd.toISOString()}`);
 
-    // Check for conflicts - see if there's another booking immediately after
-    const checkEnd = new Date(bookingEnd.getTime() + (30 * 60 * 1000)); // Check 30 min buffer
+    // 🔥 FIX: Check for OVERLAPS (not just conflicts at the exact end time)
+    // We need to check if ANY booking exists that would overlap with our extended time
+    const checkStart = new Date(bookingStart.getTime() + currentDuration); // Start checking from where current booking ends
+    const checkEnd = new Date(bookingEnd.getTime() + (60 * 60 * 1000)); // Check 1 hour ahead
+    
+    console.log(`🔍 Checking for overlaps from ${checkStart.toISOString()} to ${checkEnd.toISOString()}`);
+    
     const conflictResponse = await squareClient.bookingsApi.listBookings(
       undefined, undefined, undefined, currentTeamMemberId,
       LOCATION_ID,
-      bookingEnd.toISOString(),
+      checkStart.toISOString(),
       checkEnd.toISOString()
     );
 
-    const conflicts = (conflictResponse.result.bookings || []).filter(b => b.id !== bookingId);
+    // 🔥 FIX: Filter out cancelled bookings AND the current booking
+    const potentialConflicts = (conflictResponse.result.bookings || []).filter(b => 
+      b.id !== bookingId && 
+      b.status !== 'CANCELLED_BY_SELLER' && 
+      b.status !== 'CANCELLED_BY_CUSTOMER'
+    );
     
-    if (conflicts.length > 0) {
-      const nextBookingTime = formatUTCtoEDT(conflicts[0].startAt);
+    console.log(`📋 Found ${potentialConflicts.length} active bookings to check`);
+    
+    // Check if any of these bookings would OVERLAP (not just touch)
+    let hasOverlap = false;
+    let conflictingBooking = null;
+    
+    for (const booking of potentialConflicts) {
+      const nextBookingStart = new Date(booking.startAt);
+      
+      console.log(`  Checking booking at ${nextBookingStart.toISOString()}`);
+      console.log(`  Our extended booking ends at ${bookingEnd.toISOString()}`);
+      
+      // OVERLAP happens if next booking starts BEFORE our extended booking ends
+      // Back-to-back is OK (nextBookingStart == bookingEnd)
+      if (nextBookingStart < bookingEnd) {
+        hasOverlap = true;
+        conflictingBooking = booking;
+        console.log(`  ❌ OVERLAP DETECTED! Next booking starts before we finish`);
+        break;
+      } else {
+        console.log(`  ✅ No overlap - back-to-back or later is OK`);
+      }
+    }
+    
+    if (hasOverlap && conflictingBooking) {
+      const nextBookingTime = formatUTCtoEDT(conflictingBooking.startAt);
       return res.json({
         success: false,
         hasConflict: true,
-        message: `I cannot add these services to your ${formatUTCtoEDT(currentBooking.startAt)} appointment because we have another customer scheduled at ${nextBookingTime}. The additional services would take ${additionalDuration / 60000} minutes. Would you like to book a separate appointment, or when you arrive for your appointment, you can ask the barber if they have time to add these services.`,
-        nextBooking: formatUTCtoEDT(conflicts[0].startAt),
+        message: `I cannot add these services to your ${formatUTCtoEDT(currentBooking.startAt)} appointment because we have another customer scheduled at ${nextBookingTime}. The additional services would take ${additionalDuration / 60000} minutes and would overlap with the next appointment. Would you like to book a separate appointment, or when you arrive, you can ask the barber if they have time to add these services.`,
+        nextBooking: nextBookingTime,
         additionalDuration: additionalDuration / 60000
       });
     }
 
-    // No conflict - update booking with all segments
+    // No overlap - update booking with all segments
     const allSegments = [...currentBooking.appointmentSegments, ...newSegments];
 
     const updateResponse = await squareClient.bookingsApi.updateBooking(
@@ -940,7 +972,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.5.0 - Add Services to Booking',
+    version: '2.6.0 - Fixed Overlap Detection',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1013,7 +1045,8 @@ app.listen(PORT, () => {
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
   console.log(`🚫 v2.4.0: Filters out already-booked time slots!`);
   console.log(`🕐 v2.4.1: lookupBooking now formats times to EDT!`);
-  console.log(`➕ v2.5.0: NEW addServicesToBooking endpoint with conflict detection!`);
+  console.log(`➕ v2.5.0: addServicesToBooking endpoint with conflict detection`);
+  console.log(`✅ v2.6.0: FIXED overlap detection - back-to-back OK, overlaps blocked!`);
   console.log(`\n🌐 Endpoints available (7 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
