@@ -299,7 +299,7 @@ app.post('/tools/getCurrentDateTime', async (req, res) => {
 
 /**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
- * 🔥 v2.7.3: FIXED - Never search in the past (midnight might be before now)
+ * 🔥 v2.7.4: FIXED - Validate time range before API call
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -351,6 +351,17 @@ app.post('/tools/getAvailability', async (req, res) => {
       startAt = new Date();
       endAt = new Date();
       endAt.setDate(endAt.getDate() + 7);
+    }
+
+    // 🔥 v2.7.4 FIX: Validate time range before making API call
+    if (startAt >= endAt) {
+      console.log(`⚠️ Invalid time range: start_at (${startAt.toISOString()}) >= end_at (${endAt.toISOString()})`);
+      return res.json({
+        success: true,
+        availableSlots: [],
+        totalCount: 0,
+        message: 'No available times - the requested time is outside business hours'
+      });
     }
 
     // Build segment filter
@@ -1092,7 +1103,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.3 - Fixed "Bookings can only be made in the future" error',
+    version: '2.7.4 - Fixed invalid time range error (end_at before start_at)',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1172,6 +1183,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.1: Fixed rescheduleBooking read-only fields error!`);
   console.log(`🔧 v2.7.2: Fixed cancelled bookings incorrectly blocking availability!`);
   console.log(`🔧 v2.7.3: Fixed "Bookings can only be made in the future" error!`);
+  console.log(`🔧 v2.7.4: Fixed invalid time range error (end_at before start_at)!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
