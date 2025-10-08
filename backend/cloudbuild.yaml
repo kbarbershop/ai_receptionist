@@ -1,1 +1,0 @@
-steps:\n- name: 'gcr.io/cloud-builders/docker'\n  args: ['build', '-t', 'gcr.io/website-473417/k-barbershop-backend:latest', '.']\nimages:\n- 'gcr.io/website-473417/k-barbershop-backend:latest'\noptions:\n  logging: CLOUD_LOGGING_ONLY\n
