@@ -36,6 +36,28 @@ const SERVICE_MAPPINGS = {
   'Silver': '7PFUQVFMALHIPDAJSYCBKBYV'
 };
 
+// Helper function to get current date/time in EDT
+const getCurrentEDT = () => {
+  const now = new Date();
+  const edtString = now.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    weekday: 'long'
+  });
+  
+  return {
+    utc: now.toISOString(),
+    edt: edtString,
+    timestamp: now.getTime()
+  };
+};
+
 // Helper function to safely convert BigInt to string
 const safeBigIntToString = (value) => {
   if (value === null || value === undefined) return null;
@@ -211,7 +233,73 @@ const getServiceDuration = (serviceVariationId) => {
 // ===== ELEVENLABS SERVER TOOLS ENDPOINTS =====
 
 /**
+ * 🆕 Get Current Date/Time - Provides context to the AI agent
+ */
+app.post('/tools/getCurrentDateTime', async (req, res) => {
+  try {
+    const now = new Date();
+    
+    // Get current time in EDT
+    const edtString = now.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    // Calculate next Thursday
+    const nextThursday = new Date(now);
+    const daysUntilThursday = (4 - now.getDay() + 7) % 7 || 7;
+    nextThursday.setDate(now.getDate() + daysUntilThursday);
+    
+    const nextThursdayString = nextThursday.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    
+    // Calculate tomorrow
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    
+    const tomorrowString = tomorrow.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    
+    res.json({
+      success: true,
+      current: {
+        dateTime: edtString,
+        timezone: 'America/New_York (EDT)',
+        utc: now.toISOString()
+      },
+      context: {
+        tomorrow: tomorrowString,
+        nextThursday: nextThursdayString,
+        message: `Today is ${edtString}. When the customer says 'thursday', they mean ${nextThursdayString}. When they say 'tomorrow', they mean ${tomorrowString}.`
+      }
+    });
+  } catch (error) {
+    console.error('getCurrentDateTime error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
+ * 🔥 v2.7.0: IMPROVED TIME MATCHING - Uses 1-minute tolerance instead of exact match
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -327,32 +415,40 @@ app.post('/tools/getAvailability', async (req, res) => {
       console.log(`⚠️ No slots available after filtering`);
     }
     
-    // Check if the exact requested time is available (only if specific time was provided)
+    // 🔥 v2.7.0 FIX: Check if the exact requested time is available with 1-minute tolerance
     let exactMatch = null;
     if (requestedTime && !isNaN(requestedTime.getTime()) && !isDateOnly) {
-      const requestedTimeUTC = requestedTime.toISOString();
-      exactMatch = formattedSlots.find(slot => slot.start_at_utc === requestedTimeUTC);
+      const requestedTimeMs = requestedTime.getTime();
+      console.log(`🔍 Looking for time match within 1 minute of: ${requestedTime.toISOString()}`);
+      
+      // Find slot within 1 minute (60000 ms) of requested time
+      exactMatch = formattedSlots.find(slot => {
+        const slotTimeMs = new Date(slot.start_at_utc).getTime();
+        const timeDiff = Math.abs(slotTimeMs - requestedTimeMs);
+        console.log(`   Checking slot ${slot.human_readable}: diff = ${timeDiff}ms`);
+        return timeDiff < 60000; // Within 1 minute
+      });
       
       if (exactMatch) {
-        console.log(`✅ EXACT MATCH FOUND: ${exactMatch.human_readable}`);
+        console.log(`✅ TIME MATCH FOUND: ${exactMatch.human_readable} (within 1 minute tolerance)`);
         
         // Return success with exact match
         return res.json({
           success: true,
           isAvailable: true,
-          requestedTime: requestedTimeUTC,
+          requestedTime: requestedTime.toISOString(),
           requestedTimeFormatted: exactMatch.human_readable,
           slot: exactMatch,
           message: `Yes, ${exactMatch.human_readable} is available`
         });
       } else {
-        console.log(`❌ Exact time NOT available, finding closest alternatives...`);
+        console.log(`❌ No time match found within 1 minute tolerance, finding closest alternatives...`);
         
         // Find 3-5 closest alternative times
         const alternatives = formattedSlots
           .map(slot => ({
             ...slot,
-            timeDiff: Math.abs(new Date(slot.start_at_utc).getTime() - requestedTime.getTime())
+            timeDiff: Math.abs(new Date(slot.start_at_utc).getTime() - requestedTimeMs)
           }))
           .sort((a, b) => a.timeDiff - b.timeDiff)
           .slice(0, 5)
@@ -364,7 +460,7 @@ app.post('/tools/getAvailability', async (req, res) => {
         return res.json({
           success: true,
           isAvailable: false,
-          requestedTime: requestedTimeUTC,
+          requestedTime: requestedTime.toISOString(),
           closestAlternatives: alternatives,
           message: `That time is not available. The closest available times are: ${altTimes}`
         });
@@ -972,10 +1068,11 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.6.0 - Fixed Overlap Detection',
+    version: '2.7.0 - Improved Time Matching + Date Context',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
+        'POST /tools/getCurrentDateTime',
         'POST /tools/getAvailability',
         'POST /tools/createBooking',
         'POST /tools/addServicesToBooking',
@@ -1047,7 +1144,9 @@ app.listen(PORT, () => {
   console.log(`🕐 v2.4.1: lookupBooking now formats times to EDT!`);
   console.log(`➕ v2.5.0: addServicesToBooking endpoint with conflict detection`);
   console.log(`✅ v2.6.0: FIXED overlap detection - back-to-back OK, overlaps blocked!`);
-  console.log(`\n🌐 Endpoints available (7 tools):`);
+  console.log(`🆕 v2.7.0: Added getCurrentDateTime endpoint + improved time matching (1-min tolerance)!`);
+  console.log(`\n🌐 Endpoints available (8 tools):`);
+  console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
   console.log(`   POST /tools/addServicesToBooking`);
