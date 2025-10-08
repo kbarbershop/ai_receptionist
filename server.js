@@ -299,7 +299,7 @@ app.post('/tools/getCurrentDateTime', async (req, res) => {
 
 /**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
- * 🔥 v2.7.0: IMPROVED TIME MATCHING - Uses 1-minute tolerance instead of exact match
+ * 🔥 v2.7.2: FIXED - Exclude cancelled bookings from blocking availability
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -376,7 +376,7 @@ app.post('/tools/getAvailability', async (req, res) => {
     const rawSlots = sanitizeBigInt(response.result.availabilities || []);
     console.log(`✅ Found ${rawSlots.length} raw slots from Square API`);
     
-    // 🔥 NEW: Fetch existing bookings to filter out already-booked times
+    // 🔥 v2.7.2 FIX: Fetch existing bookings and EXCLUDE CANCELLED ones
     const bookingsResponse = await squareClient.bookingsApi.listBookings(
       undefined, // limit
       undefined, // cursor
@@ -388,11 +388,18 @@ app.post('/tools/getAvailability', async (req, res) => {
     );
     
     const existingBookings = bookingsResponse.result.bookings || [];
-    const bookedTimes = new Set(existingBookings.map(b => b.startAt));
     
-    console.log(`📋 Found ${existingBookings.length} existing bookings to exclude`);
-    if (existingBookings.length > 0) {
-      console.log(`🚫 Booked times:`, Array.from(bookedTimes));
+    // 🔥 FIX: Only consider ACTIVE bookings (not cancelled)
+    const activeBookings = existingBookings.filter(b => 
+      b.status !== 'CANCELLED_BY_SELLER' && 
+      b.status !== 'CANCELLED_BY_CUSTOMER'
+    );
+    
+    const bookedTimes = new Set(activeBookings.map(b => b.startAt));
+    
+    console.log(`📋 Found ${existingBookings.length} total bookings (${activeBookings.length} active, ${existingBookings.length - activeBookings.length} cancelled)`);
+    if (activeBookings.length > 0) {
+      console.log(`🚫 Actually booked times:`, Array.from(bookedTimes));
     }
     
     // Filter out already-booked slots
@@ -1075,7 +1082,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.1 - Fixed Reschedule Read-Only Fields',
+    version: '2.7.2 - Fixed Cancelled Bookings Blocking Availability',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1153,6 +1160,7 @@ app.listen(PORT, () => {
   console.log(`✅ v2.6.0: FIXED overlap detection - back-to-back OK, overlaps blocked!`);
   console.log(`🆕 v2.7.0: Added getCurrentDateTime endpoint + improved time matching (1-min tolerance)!`);
   console.log(`🔧 v2.7.1: Fixed rescheduleBooking read-only fields error!`);
+  console.log(`🔧 v2.7.2: Fixed cancelled bookings incorrectly blocking availability!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
