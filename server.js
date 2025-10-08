@@ -299,7 +299,7 @@ app.post('/tools/getCurrentDateTime', async (req, res) => {
 
 /**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
- * 🔥 v2.7.4: FIXED - Validate time range before API call
+ * 🔥 v2.7.5: FIXED - Reject dates in the past
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -328,17 +328,28 @@ app.post('/tools/getAvailability', async (req, res) => {
     // Set search window
     let startAt, endAt;
     if (isDateOnly && startDate) {
-      // 🔥 FIX v2.7.3: Never search in the past
-      // Use the LATER of midnight OR current time as the start
+      // 🔥 FIX v2.7.5: Check if date is in the past BEFORE calculating times
       const now = new Date();
-      const midnightEDT = new Date(startDate + 'T00:00:00-04:00');
+      const requestedDate = new Date(startDate + 'T00:00:00-04:00');
+      const endOfRequestedDate = new Date(startDate + 'T23:59:59-04:00');
       
-      // Use whichever is later: midnight or now
-      startAt = now > midnightEDT ? now : midnightEDT;
-      endAt = new Date(startDate + 'T23:59:59-04:00');
+      // If the ENTIRE requested date is in the past, reject it
+      if (endOfRequestedDate < now) {
+        console.log(`⛔ Requested date ${startDate} is completely in the past`);
+        return res.json({
+          success: true,
+          availableSlots: [],
+          totalCount: 0,
+          message: 'That date has already passed. Please choose a future date.'
+        });
+      }
       
-      if (now > midnightEDT) {
-        console.log(`⏰ Adjusted start time: midnight (${midnightEDT.toISOString()}) was in the past, using now (${now.toISOString()}) instead`);
+      // Use the LATER of midnight OR current time as the start
+      startAt = now > requestedDate ? now : requestedDate;
+      endAt = endOfRequestedDate;
+      
+      if (now > requestedDate) {
+        console.log(`⏰ Adjusted start time: midnight (${requestedDate.toISOString()}) was in the past, using now (${now.toISOString()}) instead`);
       }
       
       console.log(`🔍 Searching date ${startDate}: ${startAt.toISOString()} to ${endAt.toISOString()}`);
@@ -1103,7 +1114,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.4 - Fixed invalid time range error (end_at before start_at)',
+    version: '2.7.5 - Fixed past date requests (rejects 2024 dates when in 2025)',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1184,6 +1195,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.2: Fixed cancelled bookings incorrectly blocking availability!`);
   console.log(`🔧 v2.7.3: Fixed "Bookings can only be made in the future" error!`);
   console.log(`🔧 v2.7.4: Fixed invalid time range error (end_at before start_at)!`);
+  console.log(`🔧 v2.7.5: Fixed past date requests (rejects 2024 dates when in 2025)!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
