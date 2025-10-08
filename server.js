@@ -79,6 +79,47 @@ const normalizePhoneNumber = (phone) => {
   return phone.startsWith('+') ? phone : `+${digits}`;
 };
 
+// 🔥 FIX: Helper function to format UTC time to EDT human-readable format
+const formatUTCtoEDT = (utcTimeString) => {
+  if (!utcTimeString) return null;
+  
+  try {
+    const utcDate = new Date(utcTimeString);
+    
+    if (isNaN(utcDate.getTime())) {
+      console.error('❌ Invalid date:', utcTimeString);
+      return utcTimeString;
+    }
+    
+    // Convert to EDT using toLocaleString
+    const edtString = utcDate.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    
+    const [datePart, timePart] = edtString.split(', ');
+    const [month, day, year] = datePart.split('/');
+    const [hours, minutes, seconds] = timePart.split(':');
+    
+    // Format as 12-hour time
+    const hour24 = parseInt(hours, 10);
+    const period = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 % 12 || 12;
+    const minuteStr = minutes.toString().padStart(2, '0');
+    
+    return `${month}/${day}/${year} at ${hour12}:${minuteStr} ${period} EDT`;
+  } catch (error) {
+    console.error('❌ Error formatting time:', error);
+    return utcTimeString;
+  }
+};
+
 // Helper function to format time slot for ElevenLabs with both snake_case and camelCase support
 const formatTimeSlot = (slot) => {
   try {
@@ -561,7 +602,7 @@ app.post('/tools/cancelBooking', async (req, res) => {
 });
 
 /**
- * Lookup Booking by Phone
+ * Lookup Booking by Phone - 🔥 NOW FORMATS TIMES TO EDT!
  */
 app.post('/tools/lookupBooking', async (req, res) => {
   try {
@@ -627,7 +668,16 @@ app.post('/tools/lookupBooking', async (req, res) => {
     );
 
     const customer = sanitizeBigInt(searchResponse.result.customers[0]);
-    const bookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
+    const rawBookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
+    
+    // 🔥 FIX: Format booking times to EDT for display
+    const bookings = rawBookings.map(booking => ({
+      ...booking,
+      startAt_formatted: formatUTCtoEDT(booking.startAt),
+      startAt_utc: booking.startAt  // Keep original UTC time
+    }));
+
+    console.log(`✅ Found ${bookings.length} bookings, formatted times to EDT`);
 
     res.json({
       success: true,
@@ -738,7 +788,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.4.0 - Filter Booked Slots',
+    version: '2.4.1 - Fix lookupBooking timezone',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -778,8 +828,7 @@ app.get('/analytics/sources', async (req, res) => {
     };
 
     bookings.forEach(booking => {
-      const note = booking.customerNote || ''
-;
+      const note = booking.customerNote || '';
       if (note.includes('Phone Booking')) sourceCounts.phone++;
       else if (note.includes('Website Booking')) sourceCounts.website++;
       else if (note.includes('In Store')) sourceCounts.inStore++;
@@ -808,7 +857,8 @@ app.listen(PORT, () => {
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
-  console.log(`🚫 NEW v2.4.0: Filters out already-booked time slots!`);
+  console.log(`🚫 v2.4.0: Filters out already-booked time slots!`);
+  console.log(`🕐 v2.4.1: lookupBooking now formats times to EDT!`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
