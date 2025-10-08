@@ -336,8 +336,8 @@ app.post('/tools/createBooking', async (req, res) => {
     const finalTeamMemberId = teamMemberId || 'TMKzhB-WjsDff5rr';
     console.log(`👤 Using team member: ${finalTeamMemberId}`);
 
-    // Normalize phone number - remove + for Square API consistency
-    const normalizedPhone = normalizePhoneNumber(customerPhone).replace(/^\+/, '');
+    // 🔥 FIX: Keep the + prefix for Square Customer API (they support +15551234567 format)
+    const normalizedPhone = normalizePhoneNumber(customerPhone);
     console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
 
     // Find or create customer
@@ -347,9 +347,9 @@ app.post('/tools/createBooking', async (req, res) => {
     try {
       // Try searching with multiple phone formats to handle existing customers
       const phoneFormats = [
-        normalizedPhone,                    // 15716995142
-        `+${normalizedPhone}`,              // +15716995142
-        normalizedPhone.substring(1)        // 5716995142
+        normalizedPhone,                      // +15716995142
+        normalizedPhone.replace(/^\+/, ''),   // 15716995142 (without +)
+        normalizedPhone.replace(/^\+1/, '')   // 5716995142 (10 digits only)
       ];
       
       let searchResponse;
@@ -382,7 +382,7 @@ app.post('/tools/createBooking', async (req, res) => {
           idempotency_key: randomUUID(),
           given_name: nameParts[0],
           family_name: nameParts.slice(1).join(' ') || '',
-          phone_number: normalizedPhone,
+          phone_number: normalizedPhone,  // Use +15716995142 format
           email_address: customerEmail,
           note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
         });
@@ -552,19 +552,36 @@ app.post('/tools/lookupBooking', async (req, res) => {
       });
     }
 
-    const normalizedPhone = normalizePhoneNumber(customerPhone).replace(/^\+/, '');
+    const normalizedPhone = normalizePhoneNumber(customerPhone);
 
-    const searchResponse = await squareClient.customersApi.searchCustomers({
-      query: {
-        filter: {
-          phoneNumber: {
-            exact: normalizedPhone
+    // Try multiple phone formats for searching
+    const phoneFormats = [
+      normalizedPhone,                      // +15716995142
+      normalizedPhone.replace(/^\+/, ''),   // 15716995142
+      normalizedPhone.replace(/^\+1/, '')   // 5716995142
+    ];
+
+    let searchResponse;
+    let found = false;
+
+    for (const phoneFormat of phoneFormats) {
+      searchResponse = await squareClient.customersApi.searchCustomers({
+        query: {
+          filter: {
+            phoneNumber: {
+              exact: phoneFormat
+            }
           }
         }
-      }
-    });
+      });
 
-    if (!searchResponse.result.customers || searchResponse.result.customers.length === 0) {
+      if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
       return res.json({
         success: true,
         found: false,
@@ -699,7 +716,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.5 - Return All Slots Fix',
+    version: '2.3.6 - Phone Format Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -764,7 +781,7 @@ app.listen(PORT, () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
-  console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
+  console.log(`📞 Phone format: E.164 with + prefix (e.g., +15716995142)`);
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
