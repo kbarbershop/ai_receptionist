@@ -299,7 +299,7 @@ app.post('/tools/getCurrentDateTime', async (req, res) => {
 
 /**
  * Get Available Time Slots - NOW FILTERS OUT ALREADY-BOOKED SLOTS!
- * 🔥 v2.7.2: FIXED - Exclude cancelled bookings from blocking availability
+ * 🔥 v2.7.3: FIXED - Never search in the past (midnight might be before now)
  */
 app.post('/tools/getAvailability', async (req, res) => {
   try {
@@ -328,10 +328,20 @@ app.post('/tools/getAvailability', async (req, res) => {
     // Set search window
     let startAt, endAt;
     if (isDateOnly && startDate) {
-      // Search the entire day requested
-      startAt = new Date(startDate + 'T00:00:00-04:00');
+      // 🔥 FIX v2.7.3: Never search in the past
+      // Use the LATER of midnight OR current time as the start
+      const now = new Date();
+      const midnightEDT = new Date(startDate + 'T00:00:00-04:00');
+      
+      // Use whichever is later: midnight or now
+      startAt = now > midnightEDT ? now : midnightEDT;
       endAt = new Date(startDate + 'T23:59:59-04:00');
-      console.log(`🔍 Searching full day: ${startAt.toISOString()} to ${endAt.toISOString()}`);
+      
+      if (now > midnightEDT) {
+        console.log(`⏰ Adjusted start time: midnight (${midnightEDT.toISOString()}) was in the past, using now (${now.toISOString()}) instead`);
+      }
+      
+      console.log(`🔍 Searching date ${startDate}: ${startAt.toISOString()} to ${endAt.toISOString()}`);
     } else if (requestedTime && !isNaN(requestedTime.getTime())) {
       // Search ±2 hours around specific time
       startAt = new Date(requestedTime.getTime() - (2 * 60 * 60 * 1000));
@@ -1082,7 +1092,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.2 - Fixed Cancelled Bookings Blocking Availability',
+    version: '2.7.3 - Fixed "Bookings can only be made in the future" error',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1161,6 +1171,7 @@ app.listen(PORT, () => {
   console.log(`🆕 v2.7.0: Added getCurrentDateTime endpoint + improved time matching (1-min tolerance)!`);
   console.log(`🔧 v2.7.1: Fixed rescheduleBooking read-only fields error!`);
   console.log(`🔧 v2.7.2: Fixed cancelled bookings incorrectly blocking availability!`);
+  console.log(`🔧 v2.7.3: Fixed "Bookings can only be made in the future" error!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
