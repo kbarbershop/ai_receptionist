@@ -79,18 +79,21 @@ const normalizePhoneNumber = (phone) => {
   return phone.startsWith('+') ? phone : `+${digits}`;
 };
 
-// Helper function to format time slot for ElevenLabs
+// 🐛 FIX: Helper function to format time slot for ElevenLabs with both snake_case and camelCase support
 const formatTimeSlot = (slot) => {
   try {
-    if (!slot || !slot.start_at) {
-      console.error('Invalid slot:', slot);
+    // Support both naming conventions from Square API
+    const startAtField = slot.start_at || slot.startAt;
+    
+    if (!startAtField) {
+      console.error('❌ Invalid slot - missing start_at/startAt:', JSON.stringify(slot));
       return slot;
     }
 
-    const utcDate = new Date(slot.start_at);
+    const utcDate = new Date(startAtField);
     
     if (isNaN(utcDate.getTime())) {
-      console.error('Invalid date:', slot.start_at);
+      console.error('❌ Invalid date:', startAtField);
       return slot;
     }
     
@@ -120,15 +123,17 @@ const formatTimeSlot = (slot) => {
     const hour12 = hour24 % 12 || 12;
     const minuteStr = minutes.toString().padStart(2, '0');
     
-    return {
+    const formatted = {
       ...slot,
-      start_at_utc: slot.start_at,
+      start_at_utc: startAtField,
       start_at_edt: edtISOString,
       human_readable: `${hour12}:${minuteStr} ${period}`,
       time_24h: `${hours}:${minuteStr}`
     };
+    
+    return formatted;
   } catch (error) {
-    console.error('Error formatting time slot:', error, slot);
+    console.error('❌ Error formatting time slot:', error, slot);
     return slot;
   }
 };
@@ -211,9 +216,24 @@ app.post('/tools/getAvailability', async (req, res) => {
 
     // Sanitize and format slots
     const rawSlots = sanitizeBigInt(response.result.availabilities || []);
+    console.log(`✅ Found ${rawSlots.length} raw slots from Square API`);
+    
+    // 🐛 FIX: Log first raw slot to debug field names
+    if (rawSlots.length > 0) {
+      console.log(`📋 First raw slot structure:`, JSON.stringify(rawSlots[0]).substring(0, 200));
+    }
+    
     const formattedSlots = rawSlots.map(formatTimeSlot);
     
-    console.log(`✅ Found ${formattedSlots.length} available slots`);
+    // 🐛 FIX: Enhanced logging to debug formatting
+    if (formattedSlots.length > 0) {
+      console.log(`✅ Successfully formatted ${formattedSlots.length} slots`);
+      console.log(`   First slot human_readable: ${formattedSlots[0].human_readable}`);
+      console.log(`   First slot start_at_utc: ${formattedSlots[0].start_at_utc}`);
+      console.log(`   Last slot human_readable: ${formattedSlots[formattedSlots.length - 1].human_readable}`);
+    } else {
+      console.log(`⚠️ No slots were formatted (formattedSlots.length = 0)`);
+    }
     
     // Check if the exact requested time is available (only if specific time was provided)
     let exactMatch = null;
@@ -262,7 +282,6 @@ app.post('/tools/getAvailability', async (req, res) => {
     // If no specific time requested, return first 10 slots
     const limitedSlots = formattedSlots.slice(0, 10);
     if (limitedSlots.length > 0) {
-      console.log(`   First slot: ${limitedSlots[0].human_readable}`);
       console.log(`   Showing ${limitedSlots.length} of ${formattedSlots.length} total slots`);
     }
 
@@ -673,7 +692,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.3 - UTC to EDT Time Conversion Fix',
+    version: '2.3.4 - Field Name Compatibility Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -739,7 +758,8 @@ app.listen(PORT, () => {
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
   console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
-  console.log(`🕐 Now formatting times in human-readable EDT format with correct UTC conversion`);
+  console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
+  console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
