@@ -934,7 +934,7 @@ app.post('/tools/cancelBooking', async (req, res) => {
 });
 
 /**
- * Lookup Booking by Phone - 🔥 v2.7.6: Fixed date format with explicit month names
+ * Lookup Booking by Phone - 🔥 v2.7.8: Separate active and cancelled bookings
  */
 app.post('/tools/lookupBooking', async (req, res) => {
   try {
@@ -1002,21 +1002,48 @@ app.post('/tools/lookupBooking', async (req, res) => {
     const customer = sanitizeBigInt(searchResponse.result.customers[0]);
     const rawBookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
     
-    // 🔥 v2.7.6 FIX: Format booking times to EDT with explicit month names (e.g., "Thu, Oct 10, 2025, 9:00 AM EDT")
-    const bookings = rawBookings.map(booking => ({
-      ...booking,
-      startAt_formatted: formatUTCtoEDT(booking.startAt),
-      startAt_utc: booking.startAt  // Keep original UTC time
-    }));
+    // 🔥 v2.7.8 FIX: Separate active and cancelled bookings
+    const activeBookings = [];
+    const cancelledBookings = [];
+    
+    rawBookings.forEach(booking => {
+      const formattedBooking = {
+        ...booking,
+        startAt_formatted: formatUTCtoEDT(booking.startAt),
+        startAt_utc: booking.startAt
+      };
+      
+      if (booking.status === 'CANCELLED_BY_SELLER' || booking.status === 'CANCELLED_BY_CUSTOMER') {
+        cancelledBookings.push(formattedBooking);
+      } else {
+        activeBookings.push(formattedBooking);
+      }
+    });
 
-    console.log(`✅ Found ${bookings.length} bookings, formatted times to EDT with explicit month names`);
+    console.log(`✅ Found ${rawBookings.length} total bookings: ${activeBookings.length} active, ${cancelledBookings.length} cancelled`);
+
+    // Create clear message
+    let message = '';
+    if (activeBookings.length > 0 && cancelledBookings.length > 0) {
+      message = `Found ${activeBookings.length} active booking(s) and ${cancelledBookings.length} cancelled booking(s)`;
+    } else if (activeBookings.length > 0) {
+      message = `Found ${activeBookings.length} active booking(s)`;
+    } else if (cancelledBookings.length > 0) {
+      message = `Found ${cancelledBookings.length} cancelled booking(s) but no active bookings`;
+    } else {
+      message = 'No upcoming bookings found';
+    }
 
     res.json({
       success: true,
       found: true,
       customer: customer,
-      bookings: bookings,
-      message: `Found ${bookings.length} upcoming bookings`
+      activeBookings: activeBookings,
+      cancelledBookings: cancelledBookings,
+      totalBookings: rawBookings.length,
+      activeCount: activeBookings.length,
+      cancelledCount: cancelledBookings.length,
+      message: message
     });
   } catch (error) {
     console.error('lookupBooking error:', error);
@@ -1120,7 +1147,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.7 - Enhanced error logging for Square API debugging',
+    version: '2.7.8 - Fixed lookupBooking to separate active and cancelled bookings',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1204,6 +1231,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.5: Fixed past date requests (rejects 2024 dates when in 2025)!`);
   console.log(`🔧 v2.7.6: Fixed date format confusion - now uses "Thu, Oct 10, 2025" instead of "10/10/2025"!`);
   console.log(`🔧 v2.7.7: Enhanced error logging to capture detailed Square API errors!`);
+  console.log(`🔧 v2.7.8: FIXED lookupBooking - now separates active and cancelled bookings!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
