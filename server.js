@@ -279,21 +279,31 @@ app.post('/tools/getAvailability', async (req, res) => {
       }
     }
     
-    // If no specific time requested, return first 10 slots
-    const limitedSlots = formattedSlots.slice(0, 10);
-    if (limitedSlots.length > 0) {
-      console.log(`   Showing ${limitedSlots.length} of ${formattedSlots.length} total slots`);
+    // 🔥 FIX: Return ALL slots, not just first 10!
+    // This ensures the AI knows the actual first and last appointment times
+    const allSlots = formattedSlots;
+    
+    if (allSlots.length > 0) {
+      const firstTime = allSlots[0].human_readable;
+      const lastTime = allSlots[allSlots.length - 1].human_readable;
+      console.log(`   Returning ${allSlots.length} slots: ${firstTime} to ${lastTime}`);
+      
+      res.json({
+        success: true,
+        availableSlots: allSlots,
+        totalCount: allSlots.length,
+        firstAvailable: firstTime,
+        lastAvailable: lastTime,
+        message: `We have ${allSlots.length} available times from ${firstTime} to ${lastTime}`
+      });
+    } else {
+      res.json({
+        success: true,
+        availableSlots: [],
+        totalCount: 0,
+        message: 'No available times found'
+      });
     }
-
-    res.json({
-      success: true,
-      availableSlots: limitedSlots,
-      totalCount: formattedSlots.length,
-      showing: limitedSlots.length,
-      message: formattedSlots.length > 0 
-        ? `Found ${formattedSlots.length} available times. First available: ${limitedSlots[0].human_readable}`
-        : 'No available times found'
-    });
   } catch (error) {
     console.error('getAvailability error:', error);
     res.status(500).json({
@@ -692,7 +702,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.3.4 - Field Name Compatibility Fix',
+    version: '2.3.5 - Return All Slots Fix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -755,11 +765,11 @@ app.listen(PORT, () => {
   console.log(`✅ Square Booking Server running on port ${PORT}`);
   console.log(`📍 Location: K BARBERSHOP (${LOCATION_ID})`);
   console.log(`🔧 Format: ElevenLabs Server Tools`);
-  console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
-  console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
+  console.log(`📦 SDK: Square v43.0.2 (Legacy API)`)  console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
   console.log(`📞 Phone validation: E.164 format with multi-format fallback`);
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
+  console.log(`🔥 Returns ALL availability slots (not just first 10)`);
   console.log(`\n🌐 Endpoints available (6 tools):`);
   console.log(`   POST /tools/getAvailability`);
   console.log(`   POST /tools/createBooking`);
