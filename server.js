@@ -684,10 +684,10 @@ app.post('/tools/createBooking', async (req, res) => {
       }
     }
 
-    console.log(`⏰ Booking time (UTC): ${bookingStartTime}`);
+console.log(`⏰ Booking time (UTC): ${bookingStartTime}`);
 
-    // Create booking
-    const bookingResponse = await squareClient.bookingsApi.createBooking({
+    // 🔥 v2.8.8: Enhanced logging for createBooking call
+    const bookingPayload = {
       booking: {
         locationId: LOCATION_ID,
         startAt: bookingStartTime,
@@ -700,7 +700,46 @@ app.post('/tools/createBooking', async (req, res) => {
         }]
       },
       idempotencyKey: randomUUID()
+    };
+
+    console.log(`🔧 Calling Square createBooking with:`, {
+      locationId: LOCATION_ID,
+      startAt: bookingStartTime,
+      customerId: customerId,
+      serviceVariationId: serviceVariationId,
+      teamMemberId: finalTeamMemberId
     });
+
+    // Create booking
+    let bookingResponse;
+    try {
+      bookingResponse = await squareClient.bookingsApi.createBooking(bookingPayload);
+    } catch (bookingError) {
+      // 🔥 v2.8.8: CRITICAL - Capture booking creation errors
+      console.error('❌ ========== BOOKING CREATION FAILED ==========');
+      console.error('❌ Error message:', bookingError.message);
+      console.error('❌ Error statusCode:', bookingError.statusCode);
+      console.error('❌ Error stack:', bookingError.stack);
+      
+      if (bookingError.errors && Array.isArray(bookingError.errors)) {
+        console.error('❌ Square API booking errors:', JSON.stringify(bookingError.errors, null, 2));
+      }
+      if (bookingError.result && bookingError.result.errors) {
+        console.error('❌ Square result.errors:', JSON.stringify(bookingError.result.errors, null, 2));
+      }
+      
+      console.error('❌ Booking payload that failed:', JSON.stringify({
+        locationId: LOCATION_ID,
+        startAt: bookingStartTime,
+        customerId: customerId,
+        serviceVariationId: serviceVariationId,
+        teamMemberId: finalTeamMemberId,
+        customerPhone: normalizedPhone
+      }, null, 2));
+      console.error('❌ ===============================================');
+      
+      throw bookingError;
+    }
 
     const booking = sanitizeBigInt(bookingResponse.result.booking);
     console.log(`✅ Booking created: ${booking.id}`);
@@ -714,7 +753,13 @@ app.post('/tools/createBooking', async (req, res) => {
       newCustomer: isNewCustomer
     });
   } catch (error) {
-    console.error('❌ createBooking error:', error);
+    // 🔥 v2.8.8: Final catch-all error logging
+    console.error('❌ ========== CREATEBOOKING TOP-LEVEL ERROR ==========');
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    console.error('❌ ====================================================');
+    
     res.status(500).json({
       success: false,
       error: error.message,
@@ -1259,7 +1304,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.7 - Remove + prefix for Square createCustomer API',
+    version: '2.8.8 - Enhanced error logging for createBooking failures',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1353,6 +1398,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ v2.8.5: CORRECT FIX - Square accepts + prefix per docs, keep E.164 format!`);
   console.log(`🔥 v2.8.6: CRITICAL FIX - Use snake_case (phone_number, given_name, family_name, email_address) NOT camelCase!`);
   console.log(`🔥 v2.8.7: Remove + prefix for Square createCustomer API`);
+  console.log(`🔍 v2.8.8: ENHANCED error logging to capture ALL createBooking 500 errors with full details!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
