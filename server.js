@@ -545,6 +545,7 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
+ * 🔥 v2.8.1 FIX: Keep + prefix when searching for customers
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
@@ -569,7 +570,7 @@ app.post('/tools/createBooking', async (req, res) => {
     const finalTeamMemberId = teamMemberId || 'TMKzhB-WjsDff5rr';
     console.log(`👤 Using team member: ${finalTeamMemberId}`);
 
-    // Keep the + prefix for Square Customer API
+    // Normalize phone to +15716995142 format
     const normalizedPhone = normalizePhoneNumber(customerPhone);
     console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
 
@@ -578,38 +579,22 @@ app.post('/tools/createBooking', async (req, res) => {
     let isNewCustomer = false;
     
     try {
-      // Try searching with multiple phone formats to handle existing customers
-      const phoneFormats = [
-        normalizedPhone,                      // +15716995142
-        normalizedPhone.replace(/^\+/, ''),   // 15716995142 (without +)
-        normalizedPhone.replace(/^\+1/, '')   // 5716995142 (10 digits only)
-      ];
-      
-      let searchResponse;
-      let foundCustomer = false;
-      
-      for (const phoneFormat of phoneFormats) {
-        searchResponse = await squareClient.customersApi.searchCustomers({
-          query: {
-            filter: {
-              phoneNumber: {
-                exact: phoneFormat
-              }
+      // 🔥 FIX: Try ONLY the +1 format first for new searches
+      let searchResponse = await squareClient.customersApi.searchCustomers({
+        query: {
+          filter: {
+            phoneNumber: {
+              exact: normalizedPhone  // Keep the + prefix!
             }
           }
-        });
-        
-        if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
-          foundCustomer = true;
-          console.log(`✅ Found existing customer with phone format: ${phoneFormat}`);
-          break;
         }
-      }
-
-      if (foundCustomer) {
+      });
+      
+      if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
         customerId = searchResponse.result.customers[0].id;
-        console.log(`✅ Found existing customer: ${customerId}`);
+        console.log(`✅ Found existing customer with phone: ${normalizedPhone}`);
       } else {
+        // Customer not found, create new
         const nameParts = customerName.split(' ');
         const createResponse = await squareClient.customersApi.createCustomer({
           idempotency_key: randomUUID(),
@@ -623,7 +608,7 @@ app.post('/tools/createBooking', async (req, res) => {
         isNewCustomer = true;
         console.log(`✅ Created new customer: ${customerId}`);
       }
-        } catch (error) {
+    } catch (error) {
       // 🔥 v2.8.0: ENHANCED error logging for customer creation failures
       console.error('❌ Customer find/create error details:', {
         message: error.message,
@@ -1235,7 +1220,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.0 - Enhanced error logging for customer creation failures',
+    version: '2.8.1 - Fixed phone number format in customer search to keep + prefix',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1322,6 +1307,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.8: FIXED lookupBooking - now separates active and cancelled bookings!`);
   console.log(`🔥 v2.7.9: FIXED timezone handling in rescheduleBooking - auto-validates and corrects!`);
   console.log(`🔍 v2.8.0: ENHANCED error logging for customer creation - captures full Square API error details!`);
+  console.log(`🔧 v2.8.1: FIXED customer search - now keeps + prefix in phone number for Square API!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
