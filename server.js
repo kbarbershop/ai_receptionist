@@ -545,7 +545,7 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
- * 🔥 v2.8.2 FIX: Use body.content field for phone search instead of phoneNumber filter
+ * 🔥 v2.8.3 FIX: Actually send phone_number in createCustomer API call
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
@@ -604,14 +604,31 @@ app.post('/tools/createBooking', async (req, res) => {
         // Customer not found, create new
         console.log(`➕ Customer not found, creating new customer with phone: ${normalizedPhone}`);
         const nameParts = customerName.split(' ');
-        const createResponse = await squareClient.customersApi.createCustomer({
-          idempotency_key: randomUUID(),
-          given_name: nameParts[0],
-          family_name: nameParts.slice(1).join(' ') || '',
-          phone_number: normalizedPhone,  // Use +15716995142 format
-          email_address: customerEmail,
-          note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
+        
+        // 🔥 v2.8.3 FIX: Build customer object with phone_number field
+        const customerData = {
+          idempotencyKey: randomUUID(),
+          customer: {
+            givenName: nameParts[0],
+            familyName: nameParts.slice(1).join(' ') || '',
+            phoneNumber: normalizedPhone,  // 🔥 FIX: Actually include phone_number in the request
+            note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
+          }
+        };
+        
+        // Only add email if provided
+        if (customerEmail) {
+          customerData.customer.emailAddress = customerEmail;
+        }
+        
+        console.log(`📝 Creating customer with data:`, {
+          phone: normalizedPhone,
+          givenName: nameParts[0],
+          familyName: nameParts.slice(1).join(' ') || '',
+          email: customerEmail || 'not provided'
         });
+        
+        const createResponse = await squareClient.customersApi.createCustomer(customerData);
         customerId = createResponse.result.customer.id;
         isNewCustomer = true;
         console.log(`✅ Created new customer: ${customerId}`);
@@ -1234,7 +1251,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.2 - Fixed Square API phone search to use body.content field',
+    version: '2.8.3 - FIXED phone_number field actually being sent to Square createCustomer API',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1323,6 +1340,7 @@ app.listen(PORT, () => {
   console.log(`🔍 v2.8.0: ENHANCED error logging for customer creation - captures full Square API error details!`);
   console.log(`🔧 v2.8.1: FIXED customer search - now keeps + prefix in phone number for Square API!`);
   console.log(`🔥 v2.8.2: FIXED Square API phone search - SDK now properly sends + prefix in body.content field!`);
+  console.log(`🔥 v2.8.3: FIXED phone_number field actually being sent in createCustomer API request!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
