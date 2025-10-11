@@ -545,7 +545,7 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
- * 🔥 v2.8.3 FIX: Actually send phone_number in createCustomer API call
+ * 🔥 v2.8.4 FIX: Square createCustomer requires phone WITHOUT + prefix
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
@@ -570,7 +570,7 @@ app.post('/tools/createBooking', async (req, res) => {
     const finalTeamMemberId = teamMemberId || 'TMKzhB-WjsDff5rr';
     console.log(`👤 Using team member: ${finalTeamMemberId}`);
 
-    // Normalize phone to +15716995142 format
+    // Normalize phone to +15716995142 format (for search)
     const normalizedPhone = normalizePhoneNumber(customerPhone);
     console.log(`📞 Phone normalization: "${customerPhone}" → "${normalizedPhone}"`);
 
@@ -579,15 +579,14 @@ app.post('/tools/createBooking', async (req, res) => {
     let isNewCustomer = false;
     
     try {
-      // 🔥 v2.8.2 FIX: Use body.content field with phone in E.164 format
-      console.log(`🔍 Searching for customer with phone in body.content: ${normalizedPhone}`);
+      // Search for customer with + prefix
+      console.log(`🔍 Searching for customer with phone: ${normalizedPhone}`);
       
       let searchResponse = await squareClient.customersApi.searchCustomers({
         query: {
           filter: {
             phoneNumber: {
-              // Square SDK internally uses body.content, so we just pass the E.164 format
-              exact: normalizedPhone  // +15716995142
+              exact: normalizedPhone  // +15716995142 - works for search
             }
           }
         }
@@ -605,13 +604,18 @@ app.post('/tools/createBooking', async (req, res) => {
         console.log(`➕ Customer not found, creating new customer with phone: ${normalizedPhone}`);
         const nameParts = customerName.split(' ');
         
-        // 🔥 v2.8.3 FIX: Build customer object with phone_number field
+        // 🔥 v2.8.4 CRITICAL FIX: Square's createCustomer API requires phone WITHOUT + prefix
+        // searchCustomers uses +15716995142 format
+        // createCustomer uses 15716995142 format (no + prefix)
+        const phoneForCreation = normalizedPhone.replace(/^\+/, '');  // Remove + for creation
+        console.log(`🔧 Converting phone for creation: ${normalizedPhone} → ${phoneForCreation}`);
+        
         const customerData = {
           idempotencyKey: randomUUID(),
           customer: {
             givenName: nameParts[0],
             familyName: nameParts.slice(1).join(' ') || '',
-            phoneNumber: normalizedPhone,  // 🔥 FIX: Actually include phone_number in the request
+            phoneNumber: phoneForCreation,  // 🔥 FIX: No + prefix for createCustomer
             note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
           }
         };
@@ -622,37 +626,43 @@ app.post('/tools/createBooking', async (req, res) => {
         }
         
         console.log(`📝 Creating customer with data:`, {
-          phone: normalizedPhone,
+          phone: phoneForCreation,
           givenName: nameParts[0],
           familyName: nameParts.slice(1).join(' ') || '',
           email: customerEmail || 'not provided'
         });
         
-        const createResponse = await squareClient.customersApi.createCustomer(customerData);
-        customerId = createResponse.result.customer.id;
-        isNewCustomer = true;
-        console.log(`✅ Created new customer: ${customerId}`);
+        try {
+          const createResponse = await squareClient.customersApi.createCustomer(customerData);
+          customerId = createResponse.result.customer.id;
+          isNewCustomer = true;
+          console.log(`✅ Created new customer: ${customerId}`);
+        } catch (createError) {
+          // 🔥 ENHANCED: Log creation error details
+          console.error('❌ Customer creation failed:', {
+            message: createError.message,
+            statusCode: createError.statusCode,
+            phone: phoneForCreation,
+            name: customerName
+          });
+          
+          if (createError.errors && Array.isArray(createError.errors)) {
+            console.error('❌ Square API creation errors:', JSON.stringify(createError.errors, null, 2));
+          }
+          if (createError.result && createError.result.errors) {
+            console.error('❌ Square result.errors:', JSON.stringify(createError.result.errors, null, 2));
+          }
+          
+          throw createError;
+        }
       }
     } catch (error) {
-      // 🔥 v2.8.2: ENHANCED error logging - log the exact API request that failed
-      console.error('❌ Customer find/create error details:', {
+      console.error('❌ Customer find/create error:', {
         message: error.message,
         statusCode: error.statusCode,
         phone: normalizedPhone,
-        name: customerName,
-        email: customerEmail || 'not provided'
+        name: customerName
       });
-      
-      // Log Square API error body if available
-      if (error.body) {
-        console.error('❌ Square API error body:', error.body);
-      }
-      if (error.errors && Array.isArray(error.errors)) {
-        console.error('❌ Square API errors array:', JSON.stringify(error.errors, null, 2));
-      }
-      if (error.result && error.result.errors) {
-        console.error('❌ Square result.errors:', JSON.stringify(error.result.errors, null, 2));
-      }
       
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
@@ -1251,7 +1261,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.3 - FIXED phone_number field actually being sent to Square createCustomer API',
+    version: '2.8.4 - FIXED Square createCustomer API phone format (no + prefix required)',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1319,7 +1329,7 @@ app.listen(PORT, () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
-  console.log(`📞 Phone format: E.164 with + prefix (e.g., +15716995142)`);
+  console.log(`📞 Phone format: Search uses +15716995142, Creation uses 15716995142 (no +)`);
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
@@ -1341,6 +1351,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.8.1: FIXED customer search - now keeps + prefix in phone number for Square API!`);
   console.log(`🔥 v2.8.2: FIXED Square API phone search - SDK now properly sends + prefix in body.content field!`);
   console.log(`🔥 v2.8.3: FIXED phone_number field actually being sent in createCustomer API request!`);
+  console.log(`🔥 v2.8.4: CRITICAL FIX - Square createCustomer requires phone WITHOUT + prefix!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
