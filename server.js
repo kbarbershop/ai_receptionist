@@ -606,7 +606,7 @@ app.post('/tools/createBooking', async (req, res) => {
         
         // 🔥 v2.8.6 CRITICAL FIX: Square API requires snake_case field names!
         // Use phone_number (NOT phoneNumber), given_name (NOT givenName), etc.
-        const phoneForCreation = normalizedPhone;  // Keep E.164 format with + prefix
+        const phoneForCreation = normalizedPhone.replace(/^\+/, '');  // Remove + for Square API
         console.log(`🔧 Using phone for creation: ${phoneForCreation}`);
         
         const customerData = {
@@ -1353,6 +1353,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`❌ v2.8.4: INCORRECT FIX - removed + prefix (caused silent failures)!`);
   console.log(`✅ v2.8.5: CORRECT FIX - Square accepts + prefix per docs, keep E.164 format!`);
   console.log(`🔥 v2.8.6: CRITICAL FIX - Use snake_case (phone_number, given_name, family_name, email_address) NOT camelCase!`);
+  console.log(`🔥 v2.8.7: const phoneForCreation = normalizedPhone.replace(/^\+/, '');  // Remove + for Square API;
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
