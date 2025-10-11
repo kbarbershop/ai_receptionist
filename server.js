@@ -623,8 +623,21 @@ app.post('/tools/createBooking', async (req, res) => {
         isNewCustomer = true;
         console.log(`✅ Created new customer: ${customerId}`);
       }
-    } catch (error) {
-      console.error('Customer find/create error details:', error);
+        } catch (error) {
+      // 🔥 v2.8.0: ENHANCED error logging for customer creation failures
+      console.error('❌ Customer find/create error details:', {
+        message: error.message,
+        statusCode: error.statusCode,
+        phone: normalizedPhone,
+        name: customerName,
+        email: customerEmail || 'not provided',
+        errors: JSON.stringify(error.errors || [], null, 2),
+        result: JSON.stringify(error.result || {}, null, 2)
+      });
+      
+      // Log the full error object for debugging
+      console.error('❌ Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      
       throw new Error(`Failed to find/create customer: ${error.message}`);
     }
 
@@ -1222,7 +1235,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.7.9 - Fixed timezone validation and auto-correction in rescheduleBooking',
+    version: '2.8.0 - Enhanced error logging for customer creation failures',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1308,6 +1321,7 @@ app.listen(PORT, () => {
   console.log(`🔧 v2.7.7: Enhanced error logging to capture detailed Square API errors!`);
   console.log(`🔧 v2.7.8: FIXED lookupBooking - now separates active and cancelled bookings!`);
   console.log(`🔥 v2.7.9: FIXED timezone handling in rescheduleBooking - auto-validates and corrects!`);
+  console.log(`🔍 v2.8.0: ENHANCED error logging for customer creation - captures full Square API error details!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
