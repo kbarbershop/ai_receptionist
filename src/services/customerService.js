@@ -57,32 +57,31 @@ export async function findCustomerByPhoneMultiFormat(customerPhone) {
 
 /**
  * Create new customer
- * 🔥 CRITICAL: Square requires E.164 format (+15715266016) for phone_number
+ * 🔥 CRITICAL: Fields must be at root level, NOT nested under 'customer'
  */
 export async function createCustomer(customerName, customerPhone, customerEmail = null) {
   const normalizedPhone = normalizePhoneNumber(customerPhone);
   const nameParts = customerName.split(' ');
   
-  console.log(`🔧 Using phone for creation: ${normalizedPhone} (E.164 format with +1)`);
+  console.log(`🔧 Using phone for creation: ${normalizedPhone} (E.164 format)`);
   
+  // ✅ v2.8.12: Square API expects flat structure, not nested
   const customerData = {
-    idempotencyKey: randomUUID(),
-    customer: {
-      given_name: nameParts[0],
-      family_name: nameParts.slice(1).join(' ') || '',
-      phone_number: normalizedPhone, // ✅ v2.8.11: Keep +1 prefix
-      note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
-    }
+    idempotency_key: randomUUID(),
+    given_name: nameParts[0],
+    family_name: nameParts.slice(1).join(' ') || '',
+    phone_number: normalizedPhone,
+    note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
   };
   
   if (customerEmail) {
-    customerData.customer.email_address = customerEmail;
+    customerData.email_address = customerEmail;
   }
   
   console.log(`📋 Creating customer:`, {
     phone_number: normalizedPhone,
-    given_name: nameParts[0],
-    family_name: customerData.customer.family_name,
+    given_name: customerData.given_name,
+    family_name: customerData.family_name,
     email_address: customerEmail || 'not provided'
   });
   
