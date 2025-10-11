@@ -545,7 +545,7 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
- * 🔥 v2.8.5 FIX: Square createCustomer ACCEPTS + prefix - keep E.164 format
+ * 🔥 v2.8.6 FIX: Use snake_case (phone_number, given_name, family_name, email_address) for Square Customer API
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
@@ -604,31 +604,31 @@ app.post('/tools/createBooking', async (req, res) => {
         console.log(`➕ Customer not found, creating new customer with phone: ${normalizedPhone}`);
         const nameParts = customerName.split(' ');
         
-        // 🔥 v2.8.5 FIX: Square docs say phone_number accepts OPTIONAL + prefix
-        // Keep E.164 format (+15716995142) for BOTH search AND creation
-        const phoneForCreation = normalizedPhone;  // Keep the + prefix!
+        // 🔥 v2.8.6 CRITICAL FIX: Square API requires snake_case field names!
+        // Use phone_number (NOT phoneNumber), given_name (NOT givenName), etc.
+        const phoneForCreation = normalizedPhone;  // Keep E.164 format with + prefix
         console.log(`🔧 Using phone for creation: ${phoneForCreation}`);
         
         const customerData = {
           idempotencyKey: randomUUID(),
           customer: {
-            givenName: nameParts[0],
-            familyName: nameParts.slice(1).join(' ') || '',
-            phoneNumber: phoneForCreation,  // 🔥 FIX: Keep + prefix for E.164 format
+            given_name: nameParts[0],                    // ✅ snake_case
+            family_name: nameParts.slice(1).join(' ') || '',  // ✅ snake_case
+            phone_number: phoneForCreation,              // ✅ snake_case (CRITICAL FIX!)
             note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
           }
         };
         
-        // Only add email if provided
+        // Only add email if provided - use snake_case
         if (customerEmail) {
-          customerData.customer.emailAddress = customerEmail;
+          customerData.customer.email_address = customerEmail;  // ✅ snake_case
         }
         
         console.log(`📝 Creating customer with data:`, {
-          phone: phoneForCreation,
-          givenName: nameParts[0],
-          familyName: nameParts.slice(1).join(' ') || '',
-          email: customerEmail || 'not provided'
+          phone_number: phoneForCreation,   // snake_case
+          given_name: nameParts[0],         // snake_case
+          family_name: nameParts.slice(1).join(' ') || '',  // snake_case
+          email_address: customerEmail || 'not provided'     // snake_case
         });
         
         try {
@@ -1260,7 +1260,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.5 - FIXED Square createCustomer to keep + prefix (E.164 format)',
+    version: '2.8.6 - CRITICAL FIX: Use snake_case (phone_number, given_name, family_name, email_address) for Square Customer API',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1352,6 +1352,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔥 v2.8.3: FIXED phone_number field actually being sent in createCustomer API request!`);
   console.log(`❌ v2.8.4: INCORRECT FIX - removed + prefix (caused silent failures)!`);
   console.log(`✅ v2.8.5: CORRECT FIX - Square accepts + prefix per docs, keep E.164 format!`);
+  console.log(`🔥 v2.8.6: CRITICAL FIX - Use snake_case (phone_number, given_name, family_name, email_address) NOT camelCase!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
