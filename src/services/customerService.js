@@ -57,7 +57,7 @@ export async function findCustomerByPhoneMultiFormat(customerPhone) {
 
 /**
  * Create new customer
- * 🔥 CRITICAL: Fields must be at root level, NOT nested under 'customer'
+ * 🔥 CRITICAL FIX v2.8.13: Square SDK requires 'customer' wrapper object
  */
 export async function createCustomer(customerName, customerPhone, customerEmail = null) {
   const normalizedPhone = normalizePhoneNumber(customerPhone);
@@ -65,9 +65,8 @@ export async function createCustomer(customerName, customerPhone, customerEmail 
   
   console.log(`🔧 Using phone for creation: ${normalizedPhone} (E.164 format)`);
   
-  // ✅ v2.8.12: Square API expects flat structure, not nested
-  const customerData = {
-    idempotency_key: randomUUID(),
+  // ✅ v2.8.13: Square SDK expects fields nested under 'customer' key
+  const customerFields = {
     given_name: nameParts[0],
     family_name: nameParts.slice(1).join(' ') || '',
     phone_number: normalizedPhone,
@@ -75,18 +74,23 @@ export async function createCustomer(customerName, customerPhone, customerEmail 
   };
   
   if (customerEmail) {
-    customerData.email_address = customerEmail;
+    customerFields.email_address = customerEmail;
   }
   
-  console.log(`📋 Creating customer:`, {
+  const requestBody = {
+    idempotency_key: randomUUID(),
+    customer: customerFields
+  };
+  
+  console.log(`📋 Creating customer with wrapper:`, {
     phone_number: normalizedPhone,
-    given_name: customerData.given_name,
-    family_name: customerData.family_name,
+    given_name: customerFields.given_name,
+    family_name: customerFields.family_name,
     email_address: customerEmail || 'not provided'
   });
   
   try {
-    const createResponse = await squareClient.customersApi.createCustomer(customerData);
+    const createResponse = await squareClient.customersApi.createCustomer(requestBody);
     console.log(`✅ Created new customer: ${createResponse.result.customer.id}`);
     return createResponse.result.customer;
   } catch (error) {
