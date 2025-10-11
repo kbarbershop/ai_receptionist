@@ -545,7 +545,7 @@ app.post('/tools/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking
- * 🔥 v2.8.6 FIX: Use snake_case (phone_number, given_name, family_name, email_address) for Square Customer API
+ * 🔥 v2.8.7 FIX: Remove + prefix for Square createCustomer API
  */
 app.post('/tools/createBooking', async (req, res) => {
   try {
@@ -604,8 +604,7 @@ app.post('/tools/createBooking', async (req, res) => {
         console.log(`➕ Customer not found, creating new customer with phone: ${normalizedPhone}`);
         const nameParts = customerName.split(' ');
         
-        // 🔥 v2.8.6 CRITICAL FIX: Square API requires snake_case field names!
-        // Use phone_number (NOT phoneNumber), given_name (NOT givenName), etc.
+        // 🔥 v2.8.7 CRITICAL FIX: Remove + prefix for Square createCustomer API
         const phoneForCreation = normalizedPhone.replace(/^\+/, '');  // Remove + for Square API
         console.log(`🔧 Using phone for creation: ${phoneForCreation}`);
         
@@ -1260,7 +1259,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'Square Booking Server for ElevenLabs',
-    version: '2.8.6 - CRITICAL FIX: Use snake_case (phone_number, given_name, family_name, email_address) for Square Customer API',
+    version: '2.8.7 - Remove + prefix for Square createCustomer API',
     sdkVersion: '43.0.2',
     endpoints: {
       serverTools: [
@@ -1328,7 +1327,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔧 Format: ElevenLabs Server Tools`);
   console.log(`📦 SDK: Square v43.0.2 (Legacy API)`);
   console.log(`📊 Booking sources configured:`, BOOKING_SOURCES);
-  console.log(`📞 Phone format: E.164 with + prefix (+15716995142) for BOTH search AND creation`);
+  console.log(`📞 Phone format: E.164 with + prefix for SEARCH, without + for CREATE`);
   console.log(`🕐 Formatting times in human-readable EDT format with correct UTC conversion`);
   console.log(`🐛 Field compatibility: snake_case + camelCase support enabled`);
   console.log(`🔥 Returns ALL availability slots (not just first 10)`);
@@ -1353,7 +1352,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`❌ v2.8.4: INCORRECT FIX - removed + prefix (caused silent failures)!`);
   console.log(`✅ v2.8.5: CORRECT FIX - Square accepts + prefix per docs, keep E.164 format!`);
   console.log(`🔥 v2.8.6: CRITICAL FIX - Use snake_case (phone_number, given_name, family_name, email_address) NOT camelCase!`);
-  console.log(`🔥 v2.8.7: const phoneForCreation = normalizedPhone.replace(/^\+/, '');  // Remove + for Square API;
+  console.log(`🔥 v2.8.7: Remove + prefix for Square createCustomer API`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
