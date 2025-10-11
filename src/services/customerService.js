@@ -57,36 +57,34 @@ export async function findCustomerByPhoneMultiFormat(customerPhone) {
 
 /**
  * Create new customer
- * 🔥 CRITICAL FIX v2.8.13: Square SDK requires 'customer' wrapper object
+ * 🔥 CRITICAL FIX v2.8.14: Square SDK requires camelCase fields at ROOT level
+ * The SDK does NOT use snake_case and does NOT wrap in 'customer' object
  */
 export async function createCustomer(customerName, customerPhone, customerEmail = null) {
   const normalizedPhone = normalizePhoneNumber(customerPhone);
   const nameParts = customerName.split(' ');
   
-  console.log(`🔧 Using phone for creation: ${normalizedPhone} (E.164 format)`);
+  console.log(`🔧 Creating customer with phone: ${normalizedPhone} (E.164 format)`);
   
-  // ✅ v2.8.13: Square SDK expects fields nested under 'customer' key
-  const customerFields = {
-    given_name: nameParts[0],
-    family_name: nameParts.slice(1).join(' ') || '',
-    phone_number: normalizedPhone,
+  // ✅ v2.8.14: Square SDK expects camelCase fields at ROOT level
+  // NOT wrapped in 'customer' object, NOT snake_case
+  const requestBody = {
+    idempotencyKey: randomUUID(),
+    givenName: nameParts[0],
+    familyName: nameParts.slice(1).join(' ') || '',
+    phoneNumber: normalizedPhone,
     note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
   };
   
   if (customerEmail) {
-    customerFields.email_address = customerEmail;
+    requestBody.emailAddress = customerEmail;
   }
   
-  const requestBody = {
-    idempotency_key: randomUUID(),
-    customer: customerFields
-  };
-  
-  console.log(`📋 Creating customer with wrapper:`, {
-    phone_number: normalizedPhone,
-    given_name: customerFields.given_name,
-    family_name: customerFields.family_name,
-    email_address: customerEmail || 'not provided'
+  console.log(`📋 Creating customer:`, {
+    phoneNumber: normalizedPhone,
+    givenName: requestBody.givenName,
+    familyName: requestBody.familyName,
+    emailAddress: customerEmail || 'not provided'
   });
   
   try {
