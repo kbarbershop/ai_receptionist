@@ -613,7 +613,7 @@ app.post('/tools/createBooking', async (req, res) => {
           customer: {
             given_name: nameParts[0],                    // ✅ snake_case
             family_name: nameParts.slice(1).join(' ') || '',  // ✅ snake_case
-            phone_number: phoneForCreation,              // ✅ snake_case (CRITICAL FIX!)
+            const phoneForCreation = normalizedPhone.replace(/^\+1/, '');  // Remove +1, keep just 5715266016  // ✅ snake_case (CRITICAL FIX!)
             note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
           }
         };
@@ -1399,6 +1399,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔥 v2.8.6: CRITICAL FIX - Use snake_case (phone_number, given_name, family_name, email_address) NOT camelCase!`);
   console.log(`🔥 v2.8.7: Remove + prefix for Square createCustomer API`);
   console.log(`🔍 v2.8.8: ENHANCED error logging to capture ALL createBooking 500 errors with full details!`);
+  console.log(`🔧 v2.8.9: Remove +1 prefix leaving 10 digits (5715276016) instead of 11 digits (15715276016) for Square createCustomer!`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
   console.log(`   POST /tools/getCurrentDateTime`);
   console.log(`   POST /tools/getAvailability`);
