@@ -29,14 +29,13 @@ export function normalizePhoneNumber(phone) {
 
 /**
  * Format phone number for Square createCustomer API
- * 🔥 CRITICAL FIX: Keep + prefix, only remove country code 1
- * Square API requires + symbol in E.164 format
- * Example: +15715266016 → +5715266016
+ * Square expects 10-digit format without country code for US numbers
+ * Example: +15715266016 → 5715266016
  */
 export function formatPhoneForCreation(normalizedPhone) {
   if (!normalizedPhone) return null;
-  // Keep the + prefix, remove only the country code 1
-  return normalizedPhone.replace(/^\+1/, '+');
+  // Remove +1 prefix completely to get 10-digit number
+  return normalizedPhone.replace(/^\+1/, '');
 }
 
 /**
