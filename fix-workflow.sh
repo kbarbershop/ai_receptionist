@@ -1,0 +1,74 @@
+#!/bin/bash
+# Quick fix to enable auto-deployment
+# Run this script to update the workflow to use GCR
+
+cat > .github/workflows/deploy.yml << 'EOF'
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: website-473417
+  SERVICE_NAME: square-mcp-server
+  REGION: us-east4
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_TAG="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+        docker build -t ${IMAGE_TAG} .
+        docker push ${IMAGE_TAG}
+        echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image ${{ env.IMAGE_TAG }} \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars "SQUARE_ACCESS_TOKEN=${{ secrets.SQUARE_ACCESS_TOKEN }},SQUARE_ENVIRONMENT=production" \
+          --memory 512Mi \
+          --cpu 1 \
+          --timeout 300 \
+          --max-instances 10
+
+    - name: Get Service URL
+      run: |
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        echo "🚀 Deployed to: ${SERVICE_URL}"
+        echo "✅ Health check: ${SERVICE_URL}/health"
+EOF
+
+echo "✅ Workflow updated! Committing changes..."
+git add .github/workflows/deploy.yml
+git commit -m "🔧 Fix auto-deploy: Switch to GCR for instant deployment"
+git push origin main
+
+echo ""
+echo "🎉 Done! Auto-deployment is now enabled."
+echo "Every push to main will automatically deploy to Cloud Run."
