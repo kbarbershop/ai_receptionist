@@ -1,6 +1,6 @@
 {
   "name": "ai-receptionist",
-  "version": "2.8.13",
+  "version": "2.8.14",
   "description": "ElevenLabs AI Receptionist backend for K Barbershop using Square API",
   "type": "module",
   "main": "src/app.js",
