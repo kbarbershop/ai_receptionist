@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { squareClient } from '../config/square.js';
 import { BOOKING_SOURCES } from '../config/constants.js';
-import { normalizePhoneNumber, formatPhoneForCreation, getPhoneSearchFormats } from '../utils/phoneNumber.js';
+import { normalizePhoneNumber, getPhoneSearchFormats } from '../utils/phoneNumber.js';
 
 /**
  * Find customer by phone number
@@ -57,22 +57,20 @@ export async function findCustomerByPhoneMultiFormat(customerPhone) {
 
 /**
  * Create new customer
- * 🔥 CRITICAL: Uses 10-digit phone format (no +1) for createCustomer API
+ * 🔥 CRITICAL: Square requires E.164 format (+15715266016) for phone_number
  */
 export async function createCustomer(customerName, customerPhone, customerEmail = null) {
   const normalizedPhone = normalizePhoneNumber(customerPhone);
   const nameParts = customerName.split(' ');
   
-  // 🔥 v2.8.10 FIX: Remove +1 prefix for Square createCustomer API
-  const phoneForCreation = formatPhoneForCreation(normalizedPhone);
-  console.log(`🔧 Using phone for creation: ${phoneForCreation} (10 digits, no +1)`);
+  console.log(`🔧 Using phone for creation: ${normalizedPhone} (E.164 format with +1)`);
   
   const customerData = {
     idempotencyKey: randomUUID(),
     customer: {
       given_name: nameParts[0],
       family_name: nameParts.slice(1).join(' ') || '',
-      phone_number: phoneForCreation,
+      phone_number: normalizedPhone, // ✅ v2.8.11: Keep +1 prefix
       note: `First booking: ${BOOKING_SOURCES.PHONE} on ${new Date().toLocaleDateString()}`
     }
   };
@@ -82,7 +80,7 @@ export async function createCustomer(customerName, customerPhone, customerEmail 
   }
   
   console.log(`📋 Creating customer:`, {
-    phone_number: phoneForCreation,
+    phone_number: normalizedPhone,
     given_name: nameParts[0],
     family_name: customerData.customer.family_name,
     email_address: customerEmail || 'not provided'
@@ -96,7 +94,7 @@ export async function createCustomer(customerName, customerPhone, customerEmail 
     console.error('❌ Customer creation failed:', {
       message: error.message,
       statusCode: error.statusCode,
-      phone: phoneForCreation,
+      phone: normalizedPhone,
       name: customerName
     });
     
