@@ -1,272 +1,283 @@
-# K Barbershop - Backend Services
+# AI Receptionist - K Barbershop Booking System
 
-**Complete backend infrastructure for K Barbershop: ElevenLabs AI receptionist + Python website backend**
+**Version 2.8.10** - Modular Architecture
 
----
+An ElevenLabs conversational AI agent backend that handles phone bookings for K Barbershop by interfacing with Square's booking system.
 
-## 🎯 Overview
-
-This repository contains TWO backend services for K Barbershop:
-
-### 1. **ElevenLabs AI Receptionist (Node.js)** 
-Phone receptionist connected to Square Appointments API
-- ✅ Check available appointment times
-- ✅ Book new appointments  
-- ✅ Reschedule existing appointments
-- ✅ Cancel appointments
-- ✅ Look up bookings by phone
-- 📞 **Deployed:** https://square-mcp-server-265357944939.us-east4.run.app
-
-### 2. **Website Backend API (Python)** 
-FastAPI backend for the K Barbershop website
-- ✅ Customer management
-- ✅ Booking creation and validation
-- ✅ Barber profiles with images
-- ✅ Service catalog
-- ✅ Square API integration
-- 🌐 **Deployed:** https://k-barbershop-backend-265357944939.us-east4.run.app
-
----
-
-## 📂 Repository Structure
+## 🏛️ Architecture
 
 ```
-ai_receptionist/
-├── 📞 ElevenLabs AI Receptionist (Node.js)
-│   ├── server.js              # Main server with booking tools
-│   ├── package.json           # Node.js dependencies
-│   ├── Dockerfile            # Container configuration
-│   └── deploy.sh             # Deployment script
-│
-├── 🐍 Python Website Backend
-│   └── backend/
-│       ├── square_service.py     # Square API integration (FIXED ✅)
-│       ├── server.py             # FastAPI application
-│       ├── models.py             # Pydantic data models
-│       ├── database.py           # Firestore operations
-│       ├── requirements.txt      # Python dependencies
-│       ├── Dockerfile           # Container configuration
-│       ├── cloudbuild.yaml      # Cloud Build config
-│       ├── deploy_fix.sh        # Deployment script
-│       ├── test_fix.sh          # Testing script
-│       └── README.md            # Python backend docs
-│
-└── 📚 Documentation
-    ├── ELEVENLABS_SETUP.md              # ElevenLabs configuration
-    ├── CRITICAL_FIX_SQUARE_CUSTOMER_API.md  # Recent fix details
-    └── [Other docs...]
+src/
+├── config/
+│   ├── constants.js          # Booking sources, service mappings, location ID
+│   └── square.js              # Square client initialization
+├── utils/
+│   ├── phoneNumber.js         # Phone normalization utilities
+│   ├── datetime.js            # Date/time formatting utilities
+│   └── bigint.js              # BigInt sanitization utilities
+├── services/
+│   ├── customerService.js     # Customer find/create logic
+│   ├── bookingService.js      # Booking CRUD operations
+│   └── availabilityService.js # Availability checking logic
+├── routes/
+│   ├── toolsRoutes.js         # ElevenLabs tool endpoints
+│   └── analyticsRoutes.js     # Health & analytics endpoints
+└── app.js                     # Main Express app
 ```
-
----
 
 ## 🚀 Quick Start
 
-### Deploy ElevenLabs AI (Node.js)
+### Prerequisites
+- Node.js >= 18.0.0
+- Square API credentials (Production environment)
+- Google Cloud Run (for deployment)
+
+### Installation
+
 ```bash
-chmod +x deploy.sh
-./deploy.sh
+# Install dependencies
+npm install
+
+# Set environment variables
+export SQUARE_ACCESS_TOKEN=your_production_token
+export SQUARE_LOCATION_ID=LCS4MXPZP8J3M
+export PORT=8080
+
+# Run locally
+npm start
+
+# Run with auto-reload (development)
+npm run dev
 ```
 
-### Deploy Website Backend (Python)
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|--------|
+| `SQUARE_ACCESS_TOKEN` | Production Square API token | Yes | - |
+| `SQUARE_LOCATION_ID` | Square location ID | No | LCS4MXPZP8J3M |
+| `PORT` | Server port | No | 8080 |
+
+## 📡 API Endpoints
+
+### ElevenLabs Server Tools
+
+All tool endpoints accept JSON and return JSON responses.
+
+#### 1. Get Current Date/Time
+```http
+POST /tools/getCurrentDateTime
+```
+Provides context to AI agent about current date, tomorrow, and next Thursday.
+
+#### 2. Get Availability
+```http
+POST /tools/getAvailability
+Content-Type: application/json
+
+{
+  "startDate": "2025-10-15",  // YYYY-MM-DD or ISO 8601
+  "serviceVariationId": "7XPUHGDLY4N3H2OWTHMIABKF",
+  "teamMemberId": "TMKzhB-WjsDff5rr"  // optional
+}
+```
+
+#### 3. Create Booking
+```http
+POST /tools/createBooking
+Content-Type: application/json
+
+{
+  "customerName": "John Doe",
+  "customerPhone": "5715276016",
+  "customerEmail": "john@example.com",  // optional
+  "startTime": "2025-10-15T14:00:00-04:00",
+  "serviceVariationId": "7XPUHGDLY4N3H2OWTHMIABKF",
+  "teamMemberId": "TMKzhB-WjsDff5rr"  // optional
+}
+```
+
+#### 4. Add Services to Booking
+```http
+POST /tools/addServicesToBooking
+Content-Type: application/json
+
+{
+  "bookingId": "abc123",
+  "serviceNames": ["Beard Trim", "Nose Waxing"]
+}
+```
+
+#### 5. Reschedule Booking
+```http
+POST /tools/rescheduleBooking
+Content-Type: application/json
+
+{
+  "bookingId": "abc123",
+  "newStartTime": "2025-10-16T15:00:00-04:00"
+}
+```
+
+#### 6. Cancel Booking
+```http
+POST /tools/cancelBooking
+Content-Type: application/json
+
+{
+  "bookingId": "abc123"
+}
+```
+
+#### 7. Lookup Booking
+```http
+POST /tools/lookupBooking
+Content-Type: application/json
+
+{
+  "customerPhone": "5715276016"
+}
+```
+
+#### 8. General Inquiry
+```http
+POST /tools/generalInquiry
+Content-Type: application/json
+
+{
+  "inquiryType": "hours"  // hours, services, staff, or omit for all
+}
+```
+
+### Analytics Endpoints
+
+#### Health Check
+```http
+GET /health
+```
+
+#### Booking Sources Analytics
+```http
+GET /analytics/sources
+```
+Returns booking count by source (phone, website, in-store) for last 30 days.
+
+## 🔧 Key Features
+
+### Phone Number Handling
+- **Search**: Uses E.164 format with + prefix (`+15715276016`)
+- **Create**: Uses 10 digits without +1 (`5715276016`)
+- **Normalization**: Automatic conversion from various input formats
+
+### Timezone Management
+- **Barbershop Timezone**: America/New_York (EDT)
+- **Auto-correction**: Validates and fixes missing timezone offsets
+- **UTC Conversion**: All Square API calls use UTC internally
+- **Human-readable**: Formats dates as "Thu, Oct 10, 2025 2:00 PM EDT"
+
+### Availability Logic
+- Filters out cancelled bookings
+- Prevents overlapping appointments
+- Allows back-to-back bookings
+- 1-minute tolerance for time matching
+- Validates past dates automatically
+
+### Error Handling
+- Enhanced logging for Square API errors
+- Detailed error messages for debugging
+- Graceful fallbacks for missing data
+- Comprehensive input validation
+
+## 📦 Deployment
+
+### Google Cloud Run
+
+1. **Build container:**
 ```bash
-cd backend
-chmod +x deploy_fix.sh
-./deploy_fix.sh
+gcloud builds submit --tag gcr.io/[PROJECT-ID]/ai-receptionist
 ```
 
----
-
-## 🔧 Recent Updates
-
-### ✅ Oct 8, 2025: Square Customer API Fix
-**Issue:** Python backend was failing to create new customers
-**Fix:** Removed incorrect wrapper in `square_service.py`
-**Status:** Fixed and deployed ✅
-
-See [`CRITICAL_FIX_SQUARE_CUSTOMER_API.md`](CRITICAL_FIX_SQUARE_CUSTOMER_API.md) for details.
-
----
-
-## 📊 API Endpoints
-
-### ElevenLabs AI (Node.js) - Port 8080
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/tools/getAvailability` | POST | Check available time slots |
-| `/tools/createBooking` | POST | Create appointment |
-| `/tools/rescheduleBooking` | POST | Reschedule appointment |
-| `/tools/cancelBooking` | POST | Cancel appointment |
-| `/tools/lookupBooking` | POST | Find bookings by phone |
-| `/health` | GET | Server health check |
-| `/analytics/sources` | GET | Booking sources stats |
-
-### Website Backend (Python) - Port 8080
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/` | GET | API health check |
-| `/api/services` | GET | Get all services |
-| `/api/barbers` | GET | Get barber profiles |
-| `/api/barbers/{id}/availability` | GET | Get barber availability |
-| `/api/bookings` | POST | Create booking |
-| `/api/bookings/{id}` | GET | Get booking details |
-
----
-
-## 🔐 Environment Variables
-
-### ElevenLabs AI (Node.js)
+2. **Deploy to Cloud Run:**
 ```bash
-SQUARE_ACCESS_TOKEN=your_token_here
-SQUARE_LOCATION_ID=LCS4MXPZP8J3M
-PORT=8080
+gcloud run deploy ai-receptionist \
+  --image gcr.io/[PROJECT-ID]/ai-receptionist \
+  --platform managed \
+  --region us-east1 \
+  --set-env-vars SQUARE_ACCESS_TOKEN=$SQUARE_ACCESS_TOKEN,SQUARE_LOCATION_ID=LCS4MXPZP8J3M
 ```
 
-### Website Backend (Python)
-```bash
-SQUARE_ACCESS_TOKEN=your_token_here
-SQUARE_LOCATION_ID=LCS4MXPZP8J3M
-GOOGLE_CLOUD_PROJECT=website-473417
-ENVIRONMENT=production
-PORT=8080
-```
+3. **Update ElevenLabs agent** with new Cloud Run URL
+
+## 📊 Available Services
+
+| Service | Variation ID | Duration |
+|---------|--------------|----------|
+| Regular Haircut | 7XPUHGDLY4N3H2OWTHMIABKF | 30 min |
+| Beard Trim | SPUX6LRBS6RHFBX3MSRASG2J | 30 min |
+| Beard Sculpt | UH5JRVCJGAB2KISNBQ7KMVVQ | 30 min |
+| Ear Waxing | ALZZEN4DO6JCNMC6YPXN6DPH | 10 min |
+| Nose Waxing | VVGK7I7L6BHTG7LFKLAIRHBZ | 10 min |
+| Eyebrow Waxing | 3TV5CVRXCB62BWIWVY6OCXIC | 10 min |
+| Paraffin | 7ND6OIFTRLJEPMDBBI3B3ELT | 30 min |
+| Gold | 7UKWUIF4CP7YR27FI52DWPEN | 90 min |
+| Silver | 7PFUQVFMALHIPDAJSYCBKBYV | 60 min |
+
+## 🐛 Debugging
+
+All console logs use emoji prefixes for easy scanning:
+- ✅ Success operations
+- ❌ Errors and failures
+- 🔍 Search/query operations
+- 📅 Booking operations
+- 🔧 API calls
+- 🕐 Time operations
+- 📞 Phone operations
+
+## 📝 Version History
+
+### v2.8.10 (Current)
+- 🏛️ Restructured into modular architecture
+- 🔧 Fixed phone number format for createCustomer (10 digits, no +1)
+- 📦 Separated concerns: config, utils, services, routes
+- 📋 Improved maintainability and testability
+
+### v2.8.8
+- 🔍 Enhanced error logging for debugging
+- ✅ Captured full Square API error details
+
+### v2.7.x
+- Timezone validation and auto-correction
+- Separated active/cancelled bookings
+- Fixed overlap detection
+- Added time matching with tolerance
+
+## 📚 Resources
+
+- [Square Bookings API Docs](https://developer.squareup.com/docs/bookings-api/overview)
+- [ElevenLabs Conversational AI](https://elevenlabs.io/docs/conversational-ai)
+- [Google Cloud Run Docs](https://cloud.google.com/run/docs)
+
+## 🔐 Security Notes
+
+- Never commit `.env` or expose `SQUARE_ACCESS_TOKEN`
+- Use production tokens only in production environment
+- Rotate API keys regularly
+- Monitor Cloud Run logs for suspicious activity
+
+## ⚙️ Future Improvements
+
+- [ ] Add Redis caching for Square API responses
+- [ ] Implement retry logic with exponential backoff
+- [ ] Add comprehensive unit tests
+- [ ] Set up CI/CD pipeline
+- [ ] Add monitoring/alerting (Datadog, Sentry)
+- [ ] Implement rate limiting middleware
+- [ ] Create OpenAPI/Swagger documentation
+
+## 👥 Support
+
+For issues or questions, contact: admin@k-barbershop.com
 
 ---
 
-## 🧪 Testing
-
-### Test ElevenLabs AI
-```bash
-curl https://square-mcp-server-265357944939.us-east4.run.app/health
-```
-
-### Test Website Backend
-```bash
-cd backend
-chmod +x test_fix.sh
-./test_fix.sh
-```
-
----
-
-## 🔍 Monitoring
-
-### View Logs (ElevenLabs)
-```bash
-gcloud run logs read square-mcp-server --region us-east4 --limit 50
-```
-
-### View Logs (Website Backend)
-```bash
-gcloud logging read \
-  "resource.type=cloud_run_revision AND resource.labels.service_name=k-barbershop-backend" \
-  --limit 50 \
-  --project website-473417
-```
-
-### Check for Errors
-```bash
-gcloud logging read \
-  "resource.type=cloud_run_revision AND severity>=ERROR" \
-  --limit 10 \
-  --project website-473417
-```
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────┐
-│   ElevenLabs AI     │
-│   (Phone Calls)     │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Node.js Server     │◄──── /tools/getAvailability
-│  (AI Receptionist)  │◄──── /tools/createBooking
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   Square API        │
-│   (Appointments)    │
-└─────────────────────┘
-           ▲
-           │
-┌──────────┴──────────┐
-│  Python Backend     │◄──── Website
-│  (FastAPI)          │◄──── Mobile App
-└─────────────────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Google Firestore   │
-│  (Database)         │
-└─────────────────────┘
-```
-
----
-
-## 📚 Documentation
-
-- **ElevenLabs Setup:** [`ELEVENLABS_SETUP.md`](ELEVENLABS_SETUP.md)
-- **Python Backend:** [`backend/README.md`](backend/README.md)
-- **Recent Fix:** [`CRITICAL_FIX_SQUARE_CUSTOMER_API.md`](CRITICAL_FIX_SQUARE_CUSTOMER_API.md)
-- **Service IDs:** [`SERVICE_VARIATION_IDS.md`](SERVICE_VARIATION_IDS.md)
-
----
-
-## 🐛 Troubleshooting
-
-### ElevenLabs AI Not Working
-1. Check tool URLs in ElevenLabs dashboard
-2. Verify Square credentials are correct
-3. Test endpoints directly with curl
-4. Check Cloud Run logs
-
-### Website Backend Errors
-1. Check `backend/square_service.py` has the fix
-2. Verify environment variables in Cloud Run
-3. Check Firestore connection
-4. Review recent error logs
-
-### Customer Creation Fails
-If you see "unrecognized field 'customer'" errors:
-1. Ensure latest code is deployed
-2. Verify fix in `backend/square_service.py` line ~510
-3. Redeploy using `./deploy_fix.sh`
-
----
-
-## 🔗 Links
-
-- **Live Services:**
-  - ElevenLabs AI: https://square-mcp-server-265357944939.us-east4.run.app
-  - Website Backend: https://k-barbershop-backend-265357944939.us-east4.run.app
-- **Square Developer:** https://developer.squareup.com
-- **ElevenLabs Docs:** https://elevenlabs.io/docs/conversational-ai
-- **FastAPI Docs:** https://fastapi.tiangolo.com
-
----
-
-## 📞 Support
-
-For issues:
-1. Check the relevant README in each service directory
-2. Review recent fix documentation
-3. Check Cloud Run logs
-4. Open an issue on GitHub
-
----
-
-## 📄 License
-
-MIT License - K Barbershop 2025
-
----
-
-**Last Updated:** October 8, 2025  
-**Version:** 3.0.0 (Multi-service repository with Python backend)
+**K Barbershop** | Built with ❤️ using Square API & ElevenLabs
