@@ -5,7 +5,7 @@ import { createBooking, addServicesToBooking, rescheduleBooking, cancelBooking, 
 import { getAvailability } from '../services/availabilityService.js';
 import { squareClient } from '../config/square.js';
 import { LOCATION_ID } from '../config/constants.js';
-import { safeBigIntToString } from '../utils/bigint.js';
+import { safeBigIntToString, sanitizeBigInt } from '../utils/bigint.js';
 
 const router = express.Router();
 
@@ -261,12 +261,15 @@ router.post('/lookupBooking', async (req, res) => {
     // Get bookings
     const bookingResult = await lookupCustomerBookings(customer.id);
 
-    res.json({
+    // Sanitize BigInt values before returning
+    const sanitizedResult = sanitizeBigInt({
       success: true,
       found: true,
       customer: customer,
       ...bookingResult
     });
+
+    res.json(sanitizedResult);
   } catch (error) {
     console.error('lookupBooking error:', error);
     res.status(500).json({
