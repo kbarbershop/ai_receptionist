@@ -228,18 +228,53 @@ export async function addServicesToBooking(bookingId, serviceNames) {
 export async function rescheduleBooking(bookingId, newStartTime) {
   console.log(`📅 rescheduleBooking called:`, { bookingId, newStartTime });
   
+  // Get current booking first
+  const currentBooking = await getBooking(bookingId);
+  const teamMemberId = currentBooking.appointmentSegments[0].teamMemberId;
+  
+  // Calculate total duration of booking
+  const totalDuration = currentBooking.appointmentSegments.reduce((total, segment) => {
+    return total + getServiceDuration(segment.serviceVariationId);
+  }, 0);
+  
   // Validate and fix timezone
   const finalStartTime = validateAndFixTimezone(newStartTime);
   console.log(`⏰ Final booking time: ${finalStartTime}`);
   
-  const currentBooking = await getBooking(bookingId);
-  const originalSource = currentBooking.customerNote || BOOKING_SOURCES.PHONE;
-  
   // Convert to UTC for Square API
   const edtDate = new Date(finalStartTime);
   const utcTimeForSquare = edtDate.toISOString();
+  const newBookingStart = new Date(utcTimeForSquare);
+  const newBookingEnd = new Date(newBookingStart.getTime() + totalDuration);
   
-  console.log(`🔄 Sending to Square API: ${utcTimeForSquare}`);
+  console.log(`🔄 New booking window: ${newBookingStart.toISOString()} to ${newBookingEnd.toISOString()}`);
+  console.log(`⏱️  Duration: ${totalDuration / 60000} minutes`);
+  
+  // Check for overlaps with the new time
+  const { hasOverlap, conflictingBooking } = await checkForOverlaps(
+    newBookingStart,
+    newBookingEnd,
+    teamMemberId,
+    bookingId // Exclude current booking from check
+  );
+  
+  if (hasOverlap) {
+    const conflictTime = formatUTCtoEDT(conflictingBooking.startAt);
+    const requestedTime = formatUTCtoEDT(utcTimeForSquare);
+    console.log(`❌ OVERLAP: Cannot reschedule to ${requestedTime} - conflicts with ${conflictTime}`);
+    
+    return {
+      success: false,
+      hasConflict: true,
+      message: `I cannot reschedule your appointment to ${requestedTime} because there is already another customer scheduled at ${conflictTime}. Your appointment would take ${totalDuration / 60000} minutes and would overlap. Please choose a different time.`,
+      requestedTime: requestedTime,
+      conflictingTime: conflictTime,
+      duration: totalDuration / 60000
+    };
+  }
+  
+  // No overlap - proceed with reschedule
+  const originalSource = currentBooking.customerNote || BOOKING_SOURCES.PHONE;
   
   const updateResponse = await squareClient.bookingsApi.updateBooking(
     bookingId,
