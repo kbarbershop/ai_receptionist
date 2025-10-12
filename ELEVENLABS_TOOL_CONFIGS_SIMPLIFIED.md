@@ -4,6 +4,88 @@
 
 **Cloud Run URL:** `https://square-mcp-server-265357944939.us-east4.run.app`
 
+**Total Tools:** 9 (including lookupCustomer for caller ID recognition)
+
+---
+
+## Tool 9: Lookup Customer (Caller ID Recognition) - NEW!
+
+```json
+{
+  "type": "webhook",
+  "name": "lookupCustomer",
+  "description": "Check if a customer exists in Square by phone number. Use AFTER confirming phone number with caller. Returns customer info (name, email, phone) if found. Use for caller ID recognition flow: confirm phone → call this → use stored info if found.",
+  "api_schema": {
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/lookupCustomer",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Customer lookup request",
+      "required": true,
+      "properties": [
+        {
+          "id": "customerPhone",
+          "type": "string",
+          "description": "Customer's phone number to search for. Can be any format - system handles normalization.",
+          "dynamic_variable": "",
+          "constant_value": "",
+          "value_type": "llm_prompt",
+          "required": true,
+          "enum": null
+        }
+      ],
+      "dynamic_variable": "",
+      "constant_value": "",
+      "value_type": "llm_prompt"
+    },
+    "request_headers": [],
+    "auth_connection": null
+  },
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  },
+  "assignments": [],
+  "disable_interruptions": false,
+  "response_timeout_secs": 10,
+  "force_pre_tool_speech": "auto"
+}
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "found": true,
+  "customer": {
+    "id": "CUSTOMER_ID",
+    "givenName": "John",
+    "familyName": "Smith",
+    "fullName": "John Smith",
+    "phoneNumber": "+15551234567",
+    "emailAddress": "john@example.com"
+  }
+}
+```
+
+Or if not found:
+```json
+{
+  "success": true,
+  "found": false
+}
+```
+
+**Usage in Caller ID Flow:**
+1. Customer states their need (book/reschedule/cancel)
+2. Agent confirms phone: "I see you're calling from {{system_called_number}}. Is this the number for the appointment?"
+3. Customer confirms
+4. Agent calls lookupCustomer with confirmed number
+5. If found: use stored info, don't ask for name/phone again
+6. If NOT found: proceed without mentioning, collect info when needed
+
 ---
 
 ## ⚠️ Important Note About Arrays
@@ -392,11 +474,45 @@ gcloud run deploy ai-receptionist --source .
 
 ### Step 3: Add Tools to ElevenLabs
 
-Use the JSON from **Tool 3** and **Tool 4** in Option 1 above.
+Use the JSON from **Tool 3**, **Tool 4**, and **Tool 9** (lookupCustomer) in Option 1 above.
 
 ---
 
 # Testing
+
+## Test Customer Lookup
+
+```bash
+curl -X POST https://square-mcp-server-265357944939.us-east4.run.app/lookupCustomer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerPhone": "5715276016"
+  }'
+```
+
+**Expected if found:**
+```json
+{
+  "success": true,
+  "found": true,
+  "customer": {
+    "id": "...",
+    "givenName": "John",
+    "familyName": "Smith",
+    "fullName": "John Smith",
+    "phoneNumber": "+15715276016",
+    "emailAddress": "john@example.com"
+  }
+}
+```
+
+**Expected if not found:**
+```json
+{
+  "success": true,
+  "found": false
+}
+```
 
 ## Test Multi-Service Booking
 
@@ -430,5 +546,5 @@ curl -X POST https://square-mcp-server-265357944939.us-east4.run.app/addServices
 
 **Version:** 2.9.0  
 **Issue:** ElevenLabs array type compatibility  
-**Solution:** Comma-separated strings  
+**Solution:** Comma-separated strings + lookupCustomer for caller ID  
 **Status:** Ready to implement
