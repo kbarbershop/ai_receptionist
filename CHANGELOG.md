@@ -2,6 +2,83 @@
 
 All notable changes to the AI Receptionist project will be documented in this file.
 
+## [2.9.0] - 2025-10-12
+
+### ✨ MAJOR FEATURE: Multi-Service Booking Support
+
+**New Capability:** Book multiple services in a SINGLE appointment
+
+#### Backend Changes
+- Modified `createBooking()` to accept `serviceVariationIds` array (multiple services)
+- Maintains backward compatibility with single `serviceVariationId`
+- Calculates total duration across all services automatically
+- Returns `duration_minutes` and `service_count` to AI agent
+- Enhanced logging to show service count and total duration
+
+#### Route Updates
+- `POST /createBooking` now accepts:
+  - `serviceVariationIds` (array) - for multiple services
+  - `serviceVariationId` (single) - backward compatible
+- Response includes:
+  - `duration_minutes` - total appointment time
+  - `service_count` - number of services
+  - `services` - array of service names
+
+#### System Prompt Updates
+- New section: "Booking Multiple Services in One Appointment"
+- AI instructed to:
+  - Ask "Would you like to add any other services?" after first service mentioned
+  - Book all services in ONE appointment (not separate)
+  - Inform customer of total duration
+  - Use `serviceVariationIds` array for multiple services
+- Added examples and guardrails for multi-service bookings
+- Enhanced tool documentation for `createBooking`
+
+#### Key Features
+- **Single appointment with multiple services** - no more back-to-back bookings
+- **Automatic duration calculation** - Haircut (30min) + Beard Trim (30min) = 60min
+- **Conflict detection** - validates combined duration doesn't overlap
+- **Customer notification** - AI tells customer total time commitment
+- **100% backward compatible** - existing single-service bookings still work
+
+#### Example Workflow
+**Before (v2.8.x):**
+- Customer: "I want a haircut and beard trim"
+- System: Creates 2 separate appointments (2:00pm haircut, 2:30pm beard trim)
+
+**After (v2.9.0):**
+- Customer: "I want a haircut and beard trim"
+- System: Creates 1 appointment with both services (2:00pm, 60 minutes total)
+- AI says: "You're all set for 2pm. That'll be 60 minutes for your haircut and beard trim."
+
+#### Technical Details
+```javascript
+// Old way (still works)
+createBooking(customerId, startTime, "7XPUHGDLY4N3H2OWTHMIABKF", teamId);
+
+// New way (multiple services)
+createBooking(customerId, startTime, [
+  "7XPUHGDLY4N3H2OWTHMIABKF",  // Haircut
+  "SPUX6LRBS6RHFBX3MSRASG2J"   // Beard Trim
+], teamId);
+
+// Returns:
+{
+  id: "booking123",
+  duration_minutes: 60,
+  service_count: 2,
+  // ... other booking data
+}
+```
+
+#### Migration Notes
+- No breaking changes - fully backward compatible
+- ElevenLabs agent must be updated with new system prompt
+- Existing single-service bookings continue to work
+- No database changes needed
+
+---
+
 ## [2.8.10] - 2025-10-11
 
 ### 🏗️ Architecture Overhaul
