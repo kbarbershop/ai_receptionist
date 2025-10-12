@@ -339,6 +339,58 @@ router.post('/lookupBooking', async (req, res) => {
 });
 
 /**
+ * Lookup Customer by Phone (for Caller ID recognition)
+ * Returns customer info if found, no bookings
+ */
+router.post('/lookupCustomer', async (req, res) => {
+  try {
+    const { customerPhone } = req.body;
+
+    console.log(`🔍 lookupCustomer called with phone: ${customerPhone}`);
+
+    if (!customerPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: customerPhone'
+      });
+    }
+
+    // Find customer using multi-format search
+    const customer = await findCustomerByPhoneMultiFormat(customerPhone);
+    
+    if (!customer) {
+      console.log(`   Customer not found for phone: ${customerPhone}`);
+      return res.json({
+        success: true,
+        found: false
+      });
+    }
+
+    console.log(`✅ Customer found: ${customer.givenName} ${customer.familyName} (${customer.id})`);
+
+    // Return customer info (no bookings for this endpoint)
+    res.json({
+      success: true,
+      found: true,
+      customer: {
+        id: customer.id,
+        givenName: customer.givenName,
+        familyName: customer.familyName,
+        fullName: `${customer.givenName || ''} ${customer.familyName || ''}`.trim(),
+        phoneNumber: customer.phoneNumber,
+        emailAddress: customer.emailAddress
+      }
+    });
+  } catch (error) {
+    console.error('❌ lookupCustomer error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * General Inquiry
  */
 router.post('/generalInquiry', async (req, res) => {
