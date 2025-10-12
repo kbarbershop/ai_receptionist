@@ -35,4 +35,4 @@ export const SERVICE_DURATIONS = {
 export const LOCATION_ID = process.env.SQUARE_LOCATION_ID || 'LCS4MXPZP8J3M';
 export const DEFAULT_TEAM_MEMBER_ID = 'TMKzhB-WjsDff5rr';
 export const TIMEZONE = 'America/New_York';
-export const VERSION = '2.8.10';
+export const VERSION = '2.9.0';
