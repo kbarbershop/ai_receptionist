@@ -436,33 +436,71 @@ export async function cancelBooking(bookingId) {
 /**
  * Lookup customer bookings
  * Returns appointments from 60 days past to 60 days future
+ * IMPORTANT: Square API has a 31-day limit per call, so we make multiple calls
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
   
-  // 60 days in the past
-  const past = new Date();
-  past.setDate(past.getDate() - 60);
-  
-  // 60 days in the future
-  const future = new Date();
-  future.setDate(future.getDate() + 60);
-  
   console.log(`🔍 Looking up bookings for customer ${customerId}`);
-  console.log(`   Range: ${past.toISOString()} to ${future.toISOString()}`);
-  console.log(`   (60 days past to 60 days future)`);
+  console.log(`   Strategy: Multiple API calls (Square has 31-day limit per call)`);
   
-  const bookingsResponse = await squareClient.bookingsApi.listBookings(
-    undefined,
-    undefined,
-    customerId,
-    undefined,
-    LOCATION_ID,
-    past.toISOString(),
-    future.toISOString()
-  );
+  // Define our desired ranges
+  const past60 = new Date(now);
+  past60.setDate(past60.getDate() - 60);
   
-  const rawBookings = sanitizeBigInt(bookingsResponse.result.bookings || []);
+  const future60 = new Date(now);
+  future60.setDate(future60.getDate() + 60);
+  
+  // Split into multiple 30-day chunks to stay under Square's 31-day limit
+  const ranges = [
+    // Past: 60-30 days ago
+    { start: new Date(past60), end: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)), label: '60-30 days ago' },
+    // Past: 30 days ago to now
+    { start: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)), end: new Date(now), label: '30 days ago to now' },
+    // Future: now to 30 days
+    { start: new Date(now), end: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), label: 'now to 30 days' },
+    // Future: 30-60 days
+    { start: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), end: new Date(future60), label: '30-60 days ahead' }
+  ];
+  
+  console.log(`   Total range: ${past60.toISOString()} to ${future60.toISOString()}`);
+  console.log(`   Split into ${ranges.length} API calls (each ≤30 days)`);
+  
+  const allBookings = [];
+  
+  // Make multiple API calls
+  for (let i = 0; i < ranges.length; i++) {
+    const range = ranges[i];
+    console.log(`   Call ${i + 1}/${ranges.length}: ${range.label}`);
+    console.log(`     ${range.start.toISOString()} to ${range.end.toISOString()}`);
+    
+    try {
+      const bookingsResponse = await squareClient.bookingsApi.listBookings(
+        undefined,
+        undefined,
+        customerId,
+        undefined,
+        LOCATION_ID,
+        range.start.toISOString(),
+        range.end.toISOString()
+      );
+      
+      const rangeBookings = bookingsResponse.result.bookings || [];
+      console.log(`     Found ${rangeBookings.length} bookings in this range`);
+      
+      // Add to collection (avoid duplicates by checking ID)
+      rangeBookings.forEach(booking => {
+        if (!allBookings.find(b => b.id === booking.id)) {
+          allBookings.push(booking);
+        }
+      });
+    } catch (error) {
+      console.error(`     ⚠️ Error fetching range ${range.label}:`, error.message);
+      // Continue with other ranges even if one fails
+    }
+  }
+  
+  const rawBookings = sanitizeBigInt(allBookings);
   
   // Separate active and cancelled bookings
   const activeBookings = [];
@@ -482,7 +520,7 @@ export async function lookupCustomerBookings(customerId) {
     }
   });
   
-  console.log(`✅ Found ${rawBookings.length} total bookings: ${activeBookings.length} active, ${cancelledBookings.length} cancelled`);
+  console.log(`✅ Total: ${rawBookings.length} bookings (${activeBookings.length} active, ${cancelledBookings.length} cancelled)`);
   
   // Create clear message
   let message = '';
@@ -493,7 +531,7 @@ export async function lookupCustomerBookings(customerId) {
   } else if (cancelledBookings.length > 0) {
     message = `Found ${cancelledBookings.length} cancelled booking(s) but no active bookings`;
   } else {
-    message = 'No upcoming bookings found';
+    message = 'No bookings found in the past 60 days or next 60 days';
   }
   
   return {
