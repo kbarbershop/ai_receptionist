@@ -40,12 +40,12 @@ export function formatPhoneForCreation(normalizedPhone) {
 
 /**
  * Get multiple phone format variations for searching
+ * 🔥 FIXED v2.8.15: Square ONLY accepts E.164 format with + prefix
+ * Removed invalid formats (15715276016, 5715276016) that cause 400 errors
  */
 export function getPhoneSearchFormats(phone) {
   const normalized = normalizePhoneNumber(phone);
-  return [
-    normalized,                      // +15716995142
-    normalized.replace(/^\+/, ''),   // 15716995142
-    normalized.replace(/^\+1/, '')   // 5716995142
-  ];
+  // Square search API REQUIRES E.164 format with + prefix
+  // Only return the valid E.164 format
+  return [normalized];
 }
