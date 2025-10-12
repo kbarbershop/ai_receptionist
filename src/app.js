@@ -10,6 +10,53 @@ app.use(express.json());
 app.use('/tools', toolsRoutes);
 app.use('/', analyticsRoutes);
 
+// COMPATIBILITY: ElevenLabs sometimes caches old tool URLs without /tools prefix
+// These routes proxy to the correct /tools/* endpoints
+app.post('/addServicesToBooking', (req, res, next) => {
+  req.url = '/tools/addServicesToBooking';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/createBooking', (req, res, next) => {
+  req.url = '/tools/createBooking';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/cancelBooking', (req, res, next) => {
+  req.url = '/tools/cancelBooking';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/rescheduleBooking', (req, res, next) => {
+  req.url = '/tools/rescheduleBooking';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/lookupBooking', (req, res, next) => {
+  req.url = '/tools/lookupBooking';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/lookupCustomer', (req, res, next) => {
+  req.url = '/tools/lookupCustomer';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/getAvailability', (req, res, next) => {
+  req.url = '/tools/getAvailability';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/getCurrentDateTime', (req, res, next) => {
+  req.url = '/tools/getCurrentDateTime';
+  toolsRoutes(req, res, next);
+});
+
+app.post('/generalInquiry', (req, res, next) => {
+  req.url = '/tools/generalInquiry';
+  toolsRoutes(req, res, next);
+});
+
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -33,16 +80,17 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   ✅ Timezone auto-validation and correction`);
   console.log(`   ✅ Enhanced error logging for debugging`);
   console.log(`   ✅ Modular architecture for maintainability`);
+  console.log(`   ✅ ElevenLabs compatibility routes (no /tools prefix)`);
   console.log(`\n🌐 Endpoints available (8 tools):`);
-  console.log(`   POST /tools/getCurrentDateTime`);
-  console.log(`   POST /tools/getAvailability`);
-  console.log(`   POST /tools/createBooking`);
-  console.log(`   POST /tools/addServicesToBooking`);
-  console.log(`   POST /tools/rescheduleBooking`);
-  console.log(`   POST /tools/cancelBooking`);
-  console.log(`   POST /tools/lookupBooking`);
-  console.log(`   POST /tools/lookupCustomer`);
-  console.log(`   POST /tools/generalInquiry`);
+  console.log(`   POST /tools/getCurrentDateTime (+ /getCurrentDateTime)`);
+  console.log(`   POST /tools/getAvailability (+ /getAvailability)`);
+  console.log(`   POST /tools/createBooking (+ /createBooking)`);
+  console.log(`   POST /tools/addServicesToBooking (+ /addServicesToBooking)`);
+  console.log(`   POST /tools/rescheduleBooking (+ /rescheduleBooking)`);
+  console.log(`   POST /tools/cancelBooking (+ /cancelBooking)`);
+  console.log(`   POST /tools/lookupBooking (+ /lookupBooking)`);
+  console.log(`   POST /tools/lookupCustomer (+ /lookupCustomer)`);
+  console.log(`   POST /tools/generalInquiry (+ /generalInquiry)`);
   console.log(`\n📋 Available services:`, Object.keys(SERVICE_MAPPINGS).join(', '));
   console.log(`\n🚀 Server ready for requests!`);
 });
