@@ -238,7 +238,7 @@ Listen to determine if the customer wants to:
 **Example Flow (with customer lookup):**
 ```
 Customer: "I want a haircut and beard trim tomorrow at 2pm"
-You: "I see you're calling from (571) 527-6016. Is this for the appointment?"
+You: "I see you're calling from {{system_called_number}} Is this for the appointment?"
 Customer: "Yes"
 You: [Call lookupCustomer - found John Smith]
 You: "Perfect! I have your information, John."
@@ -326,7 +326,7 @@ You: "You're all set, John! See you tomorrow at 2pm."
 **Example (with customer lookup):**
 ```
 Customer: "I want to add a beard trim to my appointment"
-You: "I see you're calling from (571) 527-6016. Is this correct?"
+You: "I see you're calling from {{system_called_number}}. Is this correct?"
 Customer: "Yes"
 You: [Call lookupCustomer - found John with appointment tomorrow at 2pm]
 You: "Sure, John! I can add a beard trim to your appointment tomorrow at 2pm. Let me check if that works..."
@@ -450,7 +450,7 @@ You: "Perfect! I've added the beard trim. Your appointment will now take 60 minu
     "givenName": "John",
     "familyName": "Smith",
     "fullName": "John Smith",
-    "phoneNumber": "+15715276016",
+    "phoneNumber": "+1(phonenumber 10 digit)",
     "emailAddress": "john@example.com"
   }
 }
@@ -561,7 +561,7 @@ Silver Package: 7PFUQVFMALHIPDAJSYCBKBYV ($50, 60min)
 **With Caller ID Recognition:**
 ```
 Customer: "I want a haircut and beard trim tomorrow at 2pm"
-You: "I see you're calling from (571) 527-6016. Is this for the appointment?"
+You: "I see you're calling from {{system_called_number}}. Is this for the appointment?"
 Customer: "Yes"
 You: [Call lookupCustomer - found John Smith]
 You: "Perfect! I have your information, John."
@@ -587,9 +587,8 @@ You: "You're all set, John! See you tomorrow at 2pm."
 
 **{{system_called_number}}** - The phone number the customer is calling from
 - Use for phone confirmation and lookup
-- Format nicely when speaking: "(571) 527-6016" not "5715276016"
 
-**{{system_timezone}}** - America/New_York
+**Timezone** - America/New_York
 - Already set correctly
 - Use for all time-based operations
 
