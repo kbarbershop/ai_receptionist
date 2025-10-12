@@ -4,6 +4,8 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
 
 **UPDATED for v2.9.0:** Enhanced `createBooking` with multi-service support!
 
+**Cloud Run URL:** `https://square-mcp-server-265357944939.us-east4.run.app`
+
 ---
 
 ## Tool 1: Get Current Date/Time
@@ -16,7 +18,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "getCurrentDateTime",
   "description": "Get the current date and time in Eastern Time (America/New_York timezone) with context for relative dates. Use this at the START of EVERY conversation to understand what 'tomorrow', 'thursday', 'next week' means. Returns current date/time, what tomorrow is, and what next Thursday is. Always call this first before asking about availability or booking appointments.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/getCurrentDateTime",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/getCurrentDateTime",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -55,7 +57,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "getAvailability",
   "description": "Check available appointment times for K Barbershop. Use this BEFORE creating any booking to verify the requested time is available. Can check availability for a specific date (startDate in YYYY-MM-DD format) or a specific date and time (datetime in ISO 8601 format like 2025-10-15T14:00:00-04:00). Returns list of available time slots.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/getAvailability",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/getAvailability",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -135,7 +137,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "createBooking",
   "description": "Create a new appointment at K Barbershop. Can book ONE service or MULTIPLE services in a SINGLE appointment. When customer wants multiple services (e.g., 'haircut and beard trim'), use serviceVariationIds array to book them together. System calculates total duration and returns it - ALWAYS tell the customer the total time. Required: customerName, customerPhone, startTime, and either serviceVariationId (single) OR serviceVariationIds (multiple). The response includes duration_minutes - inform customer of this total time.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/createBooking",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/createBooking",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -242,13 +244,15 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
 
 **Purpose:** Add one or more services to an existing appointment
 
+**⚠️ IMPORTANT:** Service names are automatically converted to IDs in the backend via `SERVICE_MAPPINGS` in `src/config/constants.js`
+
 ```json
 {
   "type": "webhook",
   "name": "addServicesToBooking",
   "description": "Add additional services to an existing appointment. Use when customer wants to add services to their already-booked appointment. Checks for conflicts with next appointments. If services would overlap with next customer, returns error. Provide bookingId and array of service names (not IDs). Example service names: 'Beard Trim', 'Ear Waxing', 'Eyebrow Waxing'. Returns updated booking with new total duration.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/addServicesToBooking",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/addServicesToBooking",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -311,7 +315,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "lookupBooking",
   "description": "Look up existing appointments for a customer using their phone number. Returns all upcoming bookings including active and cancelled ones. Use this to find a customer's appointment before rescheduling, canceling, or adding services. Returns booking IDs, dates, times, and services.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/lookupBooking",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/lookupBooking",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -371,7 +375,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "rescheduleBooking",
   "description": "Change an existing appointment to a new date and time. Use lookupBooking first to get the booking ID. Validates new time doesn't overlap with other appointments. Checks that total appointment duration (all services) fits in new time slot. Returns updated booking confirmation.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/rescheduleBooking",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/rescheduleBooking",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -431,7 +435,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "cancelBooking",
   "description": "Cancel an existing appointment. Use lookupBooking first to get the booking ID. Always verify customer identity and confirm they want to cancel before calling this. Returns cancellation confirmation.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/cancelBooking",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/cancelBooking",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -481,7 +485,7 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
   "name": "generalInquiry",
   "description": "Get information about K Barbershop from Square. This tool can answer questions about: (1) Business hours - when open/closed, daily hours, timezone, address, phone number. (2) Services & Pricing - what services are offered, how much they cost, how long they take. (3) Staff & Barbers - who works there, barber names. Use this for ANY general question about the business. The tool automatically returns relevant information based on the question context. You can optionally specify inquiryType (hours/services/staff) or leave it empty to get all information.",
   "api_schema": {
-    "url": "https://your-cloud-run-url.run.app/generalInquiry",
+    "url": "https://square-mcp-server-265357944939.us-east4.run.app/generalInquiry",
     "method": "POST",
     "path_params_schema": [],
     "query_params_schema": [],
@@ -521,9 +525,34 @@ Copy and paste these JSON configurations when setting up each tool in ElevenLabs
 
 ---
 
+## Service Name to ID Conversion (Automatic)
+
+**For `addServicesToBooking` tool:**
+
+You provide service **NAMES**, and the backend automatically converts them to IDs using this mapping (defined in `src/config/constants.js`):
+
+```javascript
+export const SERVICE_MAPPINGS = {
+  'Regular Haircut': '7XPUHGDLY4N3H2OWTHMIABKF',
+  'Beard Trim': 'SPUX6LRBS6RHFBX3MSRASG2J',
+  'Beard Sculpt': 'UH5JRVCJGAB2KISNBQ7KMVVQ',
+  'Ear Waxing': 'ALZZEN4DO6JCNMC6YPXN6DPH',
+  'Nose Waxing': 'VVGK7I7L6BHTG7LFKLAIRHBZ',
+  'Eyebrow Waxing': '3TV5CVRXCB62BWIWVY6OCXIC',
+  'Paraffin': '7ND6OIFTRLJEPMDBBI3B3ELT',
+  'Gold': '7UKWUIF4CP7YR27FI52DWPEN',
+  'Silver': '7PFUQVFMALHIPDAJSYCBKBYV'
+};
+```
+
+✅ **You send:** `["Beard Trim", "Ear Waxing"]`  
+✅ **Backend converts to:** `["SPUX6LRBS6RHFBX3MSRASG2J", "ALZZEN4DO6JCNMC6YPXN6DPH"]`
+
+---
+
 ## Service Variation IDs Reference
 
-Use these IDs in `createBooking` tool:
+**For `createBooking` tool (use IDs directly):**
 
 ```
 Regular Haircut:  7XPUHGDLY4N3H2OWTHMIABKF ($35, 30min)
@@ -545,7 +574,7 @@ Silver Package:   7PFUQVFMALHIPDAJSYCBKBYV ($50, 60min)
 2. Click **"Add Tool"** for each tool (8 total)
 3. Select **"Webhook"** as Tool Type
 4. Copy and paste each JSON configuration above
-5. **IMPORTANT:** Replace `https://your-cloud-run-url.run.app` with your actual Cloud Run URL in ALL tools
+5. ✅ **URLs are pre-filled** with: `https://square-mcp-server-265357944939.us-east4.run.app`
 6. **Verify required fields are marked** in the ElevenLabs UI
 7. Save each tool
 8. Test each tool with sample inputs
@@ -578,7 +607,7 @@ Response includes: duration_minutes: 60
 Agent says: "Perfect! You're all set for tomorrow at 2pm. That'll be 60 minutes total for your haircut and beard trim."
 ```
 
-### Adding Services
+### Adding Services (Name Conversion)
 
 ```
 Customer: "I have an appointment tomorrow. Can I add a beard trim?"
@@ -588,8 +617,10 @@ Agent calls:
 2. addServicesToBooking with:
    {
      "bookingId": "abc123",
-     "serviceNames": ["Beard Trim"]
+     "serviceNames": ["Beard Trim"]  // ← Send NAME, not ID
    }
+
+Backend automatically converts "Beard Trim" → "SPUX6LRBS6RHFBX3MSRASG2J"
 
 Agent says: "Perfect! I've added the beard trim. Your appointment will now take 60 minutes total."
 ```
@@ -601,7 +632,12 @@ Agent says: "Perfect! I've added the beard trim. Your appointment will now take 
 **"addServicesToBooking not found"**
 - Make sure you added ALL 8 tools
 - Tool name must be exactly "addServicesToBooking"
-- URL must point to your Cloud Run deployment
+- URL is: `https://square-mcp-server-265357944939.us-east4.run.app/addServicesToBooking`
+
+**"Invalid service names"**
+- Make sure service names match exactly (case-sensitive)
+- Valid: `"Beard Trim"` ✅
+- Invalid: `"beard trim"` ❌, `"Beard trim"` ❌
 
 **"serviceVariationIds not working"**
 - Make sure tool schema includes array type for serviceVariationIds
@@ -617,4 +653,5 @@ Agent says: "Perfect! I've added the beard trim. Your appointment will now take 
 
 **Version:** 2.9.0  
 **Last Updated:** October 12, 2025  
+**Cloud Run URL:** `https://square-mcp-server-265357944939.us-east4.run.app`  
 **Next:** Copy system prompt from ELEVENLABS_SYSTEM_PROMPT.md
