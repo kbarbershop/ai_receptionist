@@ -105,6 +105,7 @@ router.post('/getAvailability', async (req, res) => {
 
 /**
  * Create New Booking (supports single or multiple services)
+ * Supports: array format OR comma-separated string (for ElevenLabs compatibility)
  */
 router.post('/createBooking', async (req, res) => {
   try {
@@ -114,7 +115,7 @@ router.post('/createBooking', async (req, res) => {
       customerEmail, 
       startTime, 
       serviceVariationId,
-      serviceVariationIds, // NEW: array of service IDs
+      serviceVariationIds, // Can be array OR comma-separated string
       teamMemberId 
     } = req.body;
 
@@ -124,6 +125,7 @@ router.post('/createBooking', async (req, res) => {
       startTime, 
       serviceVariationId,
       serviceVariationIds,
+      serviceVariationIdsType: typeof serviceVariationIds,
       teamMemberId 
     });
 
@@ -139,9 +141,14 @@ router.post('/createBooking', async (req, res) => {
     let finalServiceIds;
     
     if (serviceVariationIds && Array.isArray(serviceVariationIds) && serviceVariationIds.length > 0) {
-      // Multiple services provided
+      // Array format (direct from API calls or updated ElevenLabs)
       finalServiceIds = serviceVariationIds;
-      console.log(`🎯 Multi-service booking: ${serviceVariationIds.length} services`);
+      console.log(`🎯 Multi-service booking: ${serviceVariationIds.length} services (array format)`);
+    } else if (serviceVariationIds && typeof serviceVariationIds === 'string') {
+      // Comma-separated string format (from ElevenLabs with string workaround)
+      finalServiceIds = serviceVariationIds.split(',').map(id => id.trim()).filter(id => id.length > 0);
+      console.log(`🎯 Multi-service booking: ${finalServiceIds.length} services (string format)`);
+      console.log(`   Parsed IDs:`, finalServiceIds);
     } else if (serviceVariationId) {
       // Single service (backward compatible)
       finalServiceIds = [serviceVariationId];
@@ -149,7 +156,7 @@ router.post('/createBooking', async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        error: 'Missing required field: serviceVariationId or serviceVariationIds array'
+        error: 'Missing required field: serviceVariationId or serviceVariationIds (array or comma-separated string)'
       });
     }
 
@@ -194,17 +201,32 @@ router.post('/createBooking', async (req, res) => {
 
 /**
  * Add Services to Existing Booking
+ * Supports: array format OR comma-separated string (for ElevenLabs compatibility)
  */
 router.post('/addServicesToBooking', async (req, res) => {
   try {
-    const { bookingId, serviceNames } = req.body;
+    let { bookingId, serviceNames } = req.body;
 
-    console.log(`➕ addServicesToBooking called:`, { bookingId, serviceNames });
+    console.log(`➕ addServicesToBooking called:`, { bookingId, serviceNames, serviceNamesType: typeof serviceNames });
 
-    if (!bookingId || !serviceNames || !Array.isArray(serviceNames) || serviceNames.length === 0) {
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: bookingId and serviceNames (array)'
+        error: 'Missing required field: bookingId'
+      });
+    }
+
+    // Handle both array and comma-separated string
+    if (typeof serviceNames === 'string') {
+      // Comma-separated string format (from ElevenLabs)
+      serviceNames = serviceNames.split(',').map(name => name.trim()).filter(name => name.length > 0);
+      console.log(`   Parsed service names (${serviceNames.length}):`, serviceNames);
+    }
+
+    if (!Array.isArray(serviceNames) || serviceNames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: serviceNames (must be array or comma-separated string)'
       });
     }
 
