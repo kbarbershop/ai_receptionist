@@ -165,13 +165,25 @@ export async function checkForOverlaps(bookingStart, bookingEnd, teamMemberId, e
 
 /**
  * Add services to an existing booking
+ * Square doesn't allow updating appointment segments, so we:
+ * 1. Check for conflicts with the extended time
+ * 2. If no conflict: Cancel old booking + Create new booking with all services
+ * 3. If conflict: Return error with suggestion
  */
 export async function addServicesToBooking(bookingId, serviceNames) {
+  console.log(`➕ addServicesToBooking: Adding ${serviceNames} to booking ${bookingId}`);
+  
   const currentBooking = await getBooking(bookingId);
   const currentTeamMemberId = currentBooking.appointmentSegments[0].teamMemberId;
+  const customerId = currentBooking.customerId;
+  const originalStartTime = currentBooking.startAt;
+  
+  // Get existing service IDs
+  const existingServiceIds = currentBooking.appointmentSegments.map(seg => seg.serviceVariationId);
+  console.log(`   Existing services:`, existingServiceIds);
   
   // Convert service names to variation IDs
-  const newSegments = [];
+  const newServiceIds = [];
   const invalidServices = [];
   
   for (const serviceName of serviceNames) {
@@ -180,31 +192,33 @@ export async function addServicesToBooking(bookingId, serviceNames) {
       invalidServices.push(serviceName);
       continue;
     }
-    
-    newSegments.push({
-      serviceVariationId: variationId,
-      teamMemberId: currentTeamMemberId,
-      serviceVariationVersion: BigInt(Date.now())
-    });
+    newServiceIds.push(variationId);
   }
   
   if (invalidServices.length > 0) {
     throw new Error(`Invalid service names: ${invalidServices.join(', ')}. Valid names are: ${Object.keys(SERVICE_MAPPINGS).join(', ')}`);
   }
   
+  console.log(`   New services to add:`, newServiceIds);
+  
+  // Combine all services
+  const allServiceIds = [...existingServiceIds, ...newServiceIds];
+  console.log(`   Combined services (${allServiceIds.length} total):`, allServiceIds);
+  
   // Calculate durations
-  const currentDuration = getServiceDuration(currentBooking.appointmentSegments[0].serviceVariationId);
-  const additionalDuration = newSegments.reduce((total, seg) => total + getServiceDuration(seg.serviceVariationId), 0);
+  const currentDuration = existingServiceIds.reduce((total, id) => total + getServiceDuration(id), 0);
+  const additionalDuration = newServiceIds.reduce((total, id) => total + getServiceDuration(id), 0);
   const totalDuration = currentDuration + additionalDuration;
   
-  const bookingStart = new Date(currentBooking.startAt);
+  const bookingStart = new Date(originalStartTime);
   const bookingEnd = new Date(bookingStart.getTime() + totalDuration);
   
   console.log(`⏱️  Current: ${currentDuration / 60000}min, Additional: ${additionalDuration / 60000}min, Total: ${totalDuration / 60000}min`);
+  console.log(`   New end time: ${bookingEnd.toISOString()}`);
   
-  // Check for overlaps
+  // Check for overlaps with the extended booking time
   const { hasOverlap, conflictingBooking } = await checkForOverlaps(
-    new Date(bookingStart.getTime() + currentDuration),
+    bookingStart,
     bookingEnd,
     currentTeamMemberId,
     bookingId
@@ -212,39 +226,63 @@ export async function addServicesToBooking(bookingId, serviceNames) {
   
   if (hasOverlap) {
     const nextBookingTime = formatUTCtoEDT(conflictingBooking.startAt);
+    const currentTime = formatUTCtoEDT(originalStartTime);
+    console.log(`❌ CONFLICT: Cannot add services - would overlap with appointment at ${nextBookingTime}`);
+    
     return {
       success: false,
       hasConflict: true,
-      message: `I cannot add these services to your ${formatUTCtoEDT(currentBooking.startAt)} appointment because we have another customer scheduled at ${nextBookingTime}. The additional services would take ${additionalDuration / 60000} minutes and would overlap with the next appointment.`,
+      message: `I cannot add these services to your ${currentTime} appointment because there's another customer scheduled at ${nextBookingTime}. The additional services would take ${additionalDuration / 60000} minutes and would overlap.`,
+      currentTime: currentTime,
       nextBooking: nextBookingTime,
-      additionalDuration: additionalDuration / 60000
+      additionalDuration: additionalDuration / 60000,
+      suggestion: 'Would you like to book these services at a different time?'
     };
   }
   
-  // No overlap - update booking
-  const allSegments = [...currentBooking.appointmentSegments, ...newSegments];
+  // No conflict - cancel old booking and create new one with all services
+  console.log(`✅ No conflicts - proceeding to cancel and rebook`);
   
-  const updateResponse = await squareClient.bookingsApi.updateBooking(
-    bookingId,
-    {
-      booking: {
-        ...currentBooking,
-        appointmentSegments: allSegments,
-        version: currentBooking.version
-      }
-    }
-  );
-  
-  const updatedBooking = sanitizeBigInt(updateResponse.result.booking);
-  console.log(`✅ Updated booking ${bookingId} with ${newSegments.length} additional service(s)`);
-  
-  return {
-    success: true,
-    booking: updatedBooking,
-    servicesAdded: serviceNames,
-    totalServices: allSegments.length,
-    message: `Successfully added ${serviceNames.join(', ')} to your appointment. Your appointment will now take approximately ${totalDuration / 60000} minutes.`
-  };
+  try {
+    // Step 1: Cancel the old booking
+    console.log(`   Step 1: Cancelling old booking ${bookingId}`);
+    await squareClient.bookingsApi.cancelBooking(
+      bookingId,
+      { bookingVersion: currentBooking.version }
+    );
+    console.log(`   ✅ Old booking cancelled`);
+    
+    // Step 2: Create new booking with all services
+    console.log(`   Step 2: Creating new booking with ${allServiceIds.length} services`);
+    const newBooking = await createBooking(
+      customerId,
+      originalStartTime,
+      allServiceIds,
+      currentTeamMemberId
+    );
+    console.log(`   ✅ New booking created: ${newBooking.id}`);
+    
+    // Get service names for response
+    const allServiceNames = allServiceIds.map(id => {
+      const serviceName = Object.keys(SERVICE_MAPPINGS).find(name => SERVICE_MAPPINGS[name] === id);
+      return serviceName || 'Unknown Service';
+    });
+    
+    return {
+      success: true,
+      booking: newBooking,
+      oldBookingId: bookingId,
+      newBookingId: newBooking.id,
+      servicesAdded: serviceNames,
+      allServices: allServiceNames,
+      totalServices: allServiceIds.length,
+      duration_minutes: totalDuration / 60000,
+      message: `Successfully added ${serviceNames.join(', ')} to your appointment. Your appointment will now take ${totalDuration / 60000} minutes total for: ${allServiceNames.join(', ')}.`
+    };
+  } catch (error) {
+    console.error(`❌ Failed to cancel and rebook:`, error);
+    throw new Error(`Failed to add services: ${error.message}`);
+  }
 }
 
 /**
