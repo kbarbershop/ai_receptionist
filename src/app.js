@@ -41,6 +41,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   POST /tools/rescheduleBooking`);
   console.log(`   POST /tools/cancelBooking`);
   console.log(`   POST /tools/lookupBooking`);
+  console.log(`   POST /tools/lookupCustomer`);
   console.log(`   POST /tools/generalInquiry`);
   console.log(`\n📋 Available services:`, Object.keys(SERVICE_MAPPINGS).join(', '));
   console.log(`\n🚀 Server ready for requests!`);
