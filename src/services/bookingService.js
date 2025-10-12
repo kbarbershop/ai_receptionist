@@ -12,40 +12,77 @@ export function getServiceDuration(serviceVariationId) {
 }
 
 /**
- * Parse and convert booking start time
+ * Parse and convert booking start time from EDT to UTC
+ * CRITICAL FIX: Properly handle EDT -> UTC conversion
  */
 export function parseBookingTime(startTime) {
-  let bookingStartTime = startTime;
+  console.log(`🕐 parseBookingTime received: ${startTime}`);
   
-  // Check if time is in EDT format (ends with -04:00)
-  if (startTime.includes('-04:00')) {
-    const edtDate = new Date(startTime);
-    bookingStartTime = edtDate.toISOString();
-    console.log(`🕐 Converted EDT to UTC: ${startTime} → ${bookingStartTime}`);
-  } else if (startTime.includes('human_readable') || startTime.includes('start_at_edt')) {
-    // Agent sent the formatted object - extract UTC time
+  // Check if time is in EDT format (ends with -04:00 or -05:00)
+  if (startTime.includes('-04:00') || startTime.includes('-05:00')) {
+    // Parse the EDT time string components
+    // Format: 2025-10-13T14:00:00-04:00 (2pm EDT)
+    const match = startTime.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([-+]\d{2}):(\d{2})/);
+    
+    if (match) {
+      const [, year, month, day, hours, minutes, seconds, offsetHours, offsetMinutes] = match;
+      
+      // Create Date object treating the time as UTC FIRST
+      const utcDate = new Date(Date.UTC(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        parseInt(hours),
+        parseInt(minutes),
+        parseInt(seconds)
+      ));
+      
+      // Now SUBTRACT the offset to get true UTC
+      // EDT is UTC-4, so 2pm EDT = 2pm - (-4) = 6pm UTC (18:00)
+      const offsetMinutesTotal = parseInt(offsetHours) * 60 + parseInt(offsetMinutes);
+      const utcTimestamp = utcDate.getTime() - (offsetMinutesTotal * 60 * 1000);
+      const finalUTCDate = new Date(utcTimestamp);
+      
+      const bookingStartTime = finalUTCDate.toISOString();
+      console.log(`✅ Converted EDT to UTC correctly:`);
+      console.log(`   Input (EDT): ${startTime}`);
+      console.log(`   Output (UTC): ${bookingStartTime}`);
+      
+      return bookingStartTime;
+    }
+  }
+  
+  // If already in UTC format or other format, use as-is
+  if (startTime.endsWith('Z')) {
+    console.log(`   Already UTC: ${startTime}`);
+    return startTime;
+  }
+  
+  // Handle legacy formatted object
+  if (startTime.includes('human_readable') || startTime.includes('start_at_edt')) {
     try {
       const timeObj = JSON.parse(startTime);
-      bookingStartTime = timeObj.start_at_utc || timeObj.start_at;
+      return timeObj.start_at_utc || timeObj.start_at;
     } catch {
       // Just use as-is if not JSON
     }
   }
   
-  return bookingStartTime;
+  console.log(`⚠️  Unrecognized format, using as-is: ${startTime}`);
+  return startTime;
 }
 
 /**
  * Create a new booking with one or more services
  * @param {string} customerId - Square customer ID
- * @param {string} startTime - ISO 8601 datetime
+ * @param {string} startTime - ISO 8601 datetime in EDT format
  * @param {string|string[]} serviceVariationIds - Single ID or array of service variation IDs
  * @param {string} teamMemberId - Team member ID
  * @returns {object} Created booking with duration info
  */
 export async function createBooking(customerId, startTime, serviceVariationIds, teamMemberId) {
   const bookingStartTime = parseBookingTime(startTime);
-  console.log(`⏰ Booking time (UTC): ${bookingStartTime}`);
+  console.log(`⏰ Booking time (UTC for Square API): ${bookingStartTime}`);
   
   // Handle both single service (backward compatible) and multiple services
   const serviceIds = Array.isArray(serviceVariationIds) ? serviceVariationIds : [serviceVariationIds];
@@ -77,7 +114,7 @@ export async function createBooking(customerId, startTime, serviceVariationIds, 
     idempotencyKey: randomUUID()
   };
   
-  console.log(`🔧 Calling Square createBooking`);
+  console.log(`🔧 Calling Square createBooking with UTC time: ${bookingStartTime}`);
   
   try {
     const bookingResponse = await squareClient.bookingsApi.createBooking(bookingPayload);
@@ -302,15 +339,14 @@ export async function rescheduleBooking(bookingId, newStartTime) {
   
   // Validate and fix timezone
   const finalStartTime = validateAndFixTimezone(newStartTime);
-  console.log(`⏰ Final booking time: ${finalStartTime}`);
+  console.log(`⏰ Final booking time (EDT): ${finalStartTime}`);
   
-  // Convert to UTC for Square API
-  const edtDate = new Date(finalStartTime);
-  const utcTimeForSquare = edtDate.toISOString();
+  // Convert EDT to UTC for Square API
+  const utcTimeForSquare = parseBookingTime(finalStartTime);
   const newBookingStart = new Date(utcTimeForSquare);
   const newBookingEnd = new Date(newBookingStart.getTime() + totalDuration);
   
-  console.log(`🔄 New booking window: ${newBookingStart.toISOString()} to ${newBookingEnd.toISOString()}`);
+  console.log(`🔄 New booking window (UTC): ${newBookingStart.toISOString()} to ${newBookingEnd.toISOString()}`);
   console.log(`⏱️  Duration: ${totalDuration / 60000} minutes`);
   
   // Check for overlaps with the new time
