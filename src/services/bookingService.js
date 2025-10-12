@@ -435,11 +435,22 @@ export async function cancelBooking(bookingId) {
 
 /**
  * Lookup customer bookings
+ * Returns appointments from 60 days past to 60 days future
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
+  
+  // 60 days in the past
+  const past = new Date();
+  past.setDate(past.getDate() - 60);
+  
+  // 60 days in the future
   const future = new Date();
-  future.setDate(future.getDate() + 30);
+  future.setDate(future.getDate() + 60);
+  
+  console.log(`🔍 Looking up bookings for customer ${customerId}`);
+  console.log(`   Range: ${past.toISOString()} to ${future.toISOString()}`);
+  console.log(`   (60 days past to 60 days future)`);
   
   const bookingsResponse = await squareClient.bookingsApi.listBookings(
     undefined,
@@ -447,7 +458,7 @@ export async function lookupCustomerBookings(customerId) {
     customerId,
     undefined,
     LOCATION_ID,
-    now.toISOString(),
+    past.toISOString(),
     future.toISOString()
   );
   
