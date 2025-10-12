@@ -1,5 +1,5 @@
 import express from 'express';
-import { DEFAULT_TEAM_MEMBER_ID, TIMEZONE } from '../config/constants.js';
+import { DEFAULT_TEAM_MEMBER_ID, TIMEZONE, SERVICE_MAPPINGS } from '../config/constants.js';
 import { findOrCreateCustomer, findCustomerByPhoneMultiFormat } from '../services/customerService.js';
 import { createBooking, addServicesToBooking, rescheduleBooking, cancelBooking, lookupCustomerBookings } from '../services/bookingService.js';
 import { getAvailability } from '../services/availabilityService.js';
@@ -104,24 +104,52 @@ router.post('/getAvailability', async (req, res) => {
 });
 
 /**
- * Create New Booking
+ * Create New Booking (supports single or multiple services)
  */
 router.post('/createBooking', async (req, res) => {
   try {
-    const { customerName, customerPhone, customerEmail, startTime, serviceVariationId, teamMemberId } = req.body;
+    const { 
+      customerName, 
+      customerPhone, 
+      customerEmail, 
+      startTime, 
+      serviceVariationId,
+      serviceVariationIds, // NEW: array of service IDs
+      teamMemberId 
+    } = req.body;
 
     console.log(`📅 createBooking called:`, { 
       customerName, 
       customerPhone, 
       startTime, 
-      serviceVariationId, 
+      serviceVariationId,
+      serviceVariationIds,
       teamMemberId 
     });
 
-    if (!customerName || !customerPhone || !startTime || !serviceVariationId) {
+    // Validate required fields
+    if (!customerName || !customerPhone || !startTime) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: customerName, customerPhone, startTime, serviceVariationId'
+        error: 'Missing required fields: customerName, customerPhone, startTime'
+      });
+    }
+
+    // Support both single service (backward compatible) and multiple services
+    let finalServiceIds;
+    
+    if (serviceVariationIds && Array.isArray(serviceVariationIds) && serviceVariationIds.length > 0) {
+      // Multiple services provided
+      finalServiceIds = serviceVariationIds;
+      console.log(`🎯 Multi-service booking: ${serviceVariationIds.length} services`);
+    } else if (serviceVariationId) {
+      // Single service (backward compatible)
+      finalServiceIds = [serviceVariationId];
+      console.log(`🎯 Single-service booking`);
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: serviceVariationId or serviceVariationIds array'
       });
     }
 
@@ -131,14 +159,23 @@ router.post('/createBooking', async (req, res) => {
     // Find or create customer
     const { customerId, isNewCustomer } = await findOrCreateCustomer(customerName, customerPhone, customerEmail);
 
-    // Create booking
-    const booking = await createBooking(customerId, startTime, serviceVariationId, finalTeamMemberId);
+    // Create booking with one or more services
+    const booking = await createBooking(customerId, startTime, finalServiceIds, finalTeamMemberId);
+
+    // Get service names for response
+    const serviceNames = finalServiceIds.map(id => {
+      const serviceName = Object.keys(SERVICE_MAPPINGS).find(name => SERVICE_MAPPINGS[name] === id);
+      return serviceName || 'Unknown Service';
+    });
 
     res.json({
       success: true,
       booking: booking,
       bookingId: booking.id,
-      message: `Appointment created successfully for ${customerName}`,
+      duration_minutes: booking.duration_minutes,
+      service_count: booking.service_count,
+      services: serviceNames,
+      message: `Appointment created successfully for ${customerName}. Total duration: ${booking.duration_minutes} minutes (${serviceNames.join(', ')})`,
       newCustomer: isNewCustomer
     });
   } catch (error) {

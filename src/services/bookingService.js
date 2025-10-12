@@ -36,11 +36,35 @@ export function parseBookingTime(startTime) {
 }
 
 /**
- * Create a new booking
+ * Create a new booking with one or more services
+ * @param {string} customerId - Square customer ID
+ * @param {string} startTime - ISO 8601 datetime
+ * @param {string|string[]} serviceVariationIds - Single ID or array of service variation IDs
+ * @param {string} teamMemberId - Team member ID
+ * @returns {object} Created booking with duration info
  */
-export async function createBooking(customerId, startTime, serviceVariationId, teamMemberId) {
+export async function createBooking(customerId, startTime, serviceVariationIds, teamMemberId) {
   const bookingStartTime = parseBookingTime(startTime);
   console.log(`⏰ Booking time (UTC): ${bookingStartTime}`);
+  
+  // Handle both single service (backward compatible) and multiple services
+  const serviceIds = Array.isArray(serviceVariationIds) ? serviceVariationIds : [serviceVariationIds];
+  
+  console.log(`📋 Creating booking with ${serviceIds.length} service(s):`, serviceIds);
+  
+  // Calculate total duration
+  let totalDuration = 0;
+  const appointmentSegments = serviceIds.map(serviceId => {
+    const duration = getServiceDuration(serviceId);
+    totalDuration += duration;
+    return {
+      serviceVariationId: serviceId,
+      teamMemberId: teamMemberId,
+      serviceVariationVersion: BigInt(Date.now())
+    };
+  });
+  
+  console.log(`⏱️  Total appointment duration: ${totalDuration / 60000} minutes (${serviceIds.length} service(s))`);
   
   const bookingPayload = {
     booking: {
@@ -48,11 +72,7 @@ export async function createBooking(customerId, startTime, serviceVariationId, t
       startAt: bookingStartTime,
       customerId: customerId,
       customerNote: BOOKING_SOURCES.PHONE,
-      appointmentSegments: [{
-        serviceVariationId: serviceVariationId,
-        teamMemberId: teamMemberId,
-        serviceVariationVersion: BigInt(Date.now())
-      }]
+      appointmentSegments: appointmentSegments
     },
     idempotencyKey: randomUUID()
   };
@@ -62,8 +82,13 @@ export async function createBooking(customerId, startTime, serviceVariationId, t
   try {
     const bookingResponse = await squareClient.bookingsApi.createBooking(bookingPayload);
     const booking = sanitizeBigInt(bookingResponse.result.booking);
-    console.log(`✅ Booking created: ${booking.id}`);
-    return booking;
+    console.log(`✅ Booking created: ${booking.id} with ${serviceIds.length} service(s)`);
+    
+    return {
+      ...booking,
+      duration_minutes: totalDuration / 60000,
+      service_count: serviceIds.length
+    };
   } catch (error) {
     console.error('❌ ========== BOOKING CREATION FAILED ==========');
     console.error('❌ Error message:', error.message);
@@ -80,7 +105,7 @@ export async function createBooking(customerId, startTime, serviceVariationId, t
       locationId: LOCATION_ID,
       startAt: bookingStartTime,
       customerId: customerId,
-      serviceVariationId: serviceVariationId,
+      serviceVariationIds: serviceIds,
       teamMemberId: teamMemberId
     }, null, 2));
     console.error('❌ ===============================================');
