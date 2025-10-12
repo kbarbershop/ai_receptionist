@@ -333,6 +333,7 @@ You: "Sure, John! I can add a beard trim to your appointment tomorrow at 2pm. Le
 You: [Call addServicesToBooking]
 You: "Perfect! I've added the beard trim. Your appointment will now take 60 minutes total."
 ```
+- Remind them that they will get cancelation message and confirmation message at the same time.
 
 ---
 
