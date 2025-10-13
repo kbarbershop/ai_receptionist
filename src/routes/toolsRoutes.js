@@ -294,6 +294,9 @@ router.post('/cancelBooking', async (req, res) => {
 
 /**
  * Lookup Booking by Phone
+ * FIX v2.9.7: Filter out cancelled bookings from AI agent response
+ * AI receives: activeBookings (future) + completedBookings (past)
+ * AI does NOT receive: cancelledBookings (hidden)
  */
 router.post('/lookupBooking', async (req, res) => {
   try {
@@ -317,16 +320,25 @@ router.post('/lookupBooking', async (req, res) => {
       });
     }
 
-    // Get bookings
+    // Get bookings (returns activeBookings, completedBookings, cancelledBookings)
     const bookingResult = await lookupCustomerBookings(customer.id);
 
-    // Sanitize BigInt values before returning
+    // FILTER: Only send active + completed to AI agent
+    // Cancelled bookings are HIDDEN from AI
     const sanitizedResult = sanitizeBigInt({
       success: true,
       found: true,
       customer: customer,
-      ...bookingResult
+      activeBookings: bookingResult.activeBookings,        // ✅ FUTURE appointments (primary)
+      completedBookings: bookingResult.completedBookings,  // ✅ PAST appointments (available on request)
+      // ❌ cancelledBookings NOT SENT - hidden from AI
+      activeCount: bookingResult.activeCount,
+      completedCount: bookingResult.completedCount,
+      totalBookings: bookingResult.activeCount + bookingResult.completedCount,  // Only count non-cancelled
+      message: bookingResult.message
     });
+
+    console.log(`📊 Sending to AI: ${sanitizedResult.activeCount} active, ${sanitizedResult.completedCount} completed (${bookingResult.cancelledCount} cancelled hidden)`);
 
     res.json(sanitizedResult);
   } catch (error) {
