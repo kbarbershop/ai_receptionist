@@ -43,6 +43,9 @@ gcloud run services describe square-mcp-server --region us-east4
 
 # Test endpoints
 curl https://square-mcp-server-265357944939.us-east4.run.app/health
+
+# Google Cloud MCP Reauth
+gcloud auth application-default login
 ```
 
 ## 📚 Documentation Files
