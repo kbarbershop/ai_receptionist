@@ -420,13 +420,13 @@ export async function cancelBooking(bookingId) {
  * Lookup customer bookings
  * Returns appointments from 60 days past to 60 days future
  * IMPORTANT: Square API has a 31-day limit per call, so we make multiple calls
- * FIX v2.9.3: Corrected ranges to stay within Square's 31-day limit
+ * FIX v2.9.4: Added pagination support to handle cursor and retrieve all pages
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
   
   console.log(`🔍 Looking up bookings for customer ${customerId}`);
-  console.log(`   Strategy: Multiple API calls (Square has 31-day limit per call)`);
+  console.log(`   Strategy: Multiple API calls with pagination (Square has 31-day limit per call)`);;
   
   // Define our desired ranges
   const past60 = new Date(now);
@@ -436,8 +436,6 @@ export async function lookupCustomerBookings(customerId) {
   future60.setDate(future60.getDate() + 60);
   
   // Split into multiple ranges staying STRICTLY within Square's 31-day limit
-  // FIX v2.9.3: Changed "yesterday to +31 days" to "now to +30 days" 
-  // to avoid 32-day range that caused 400 error
   const ranges = [
     // Past: 60-31 days ago (29 days)
     { 
@@ -466,36 +464,59 @@ export async function lookupCustomerBookings(customerId) {
   ];
   
   console.log(`   Total range: ${past60.toISOString()} to ${future60.toISOString()}`);
-  console.log(`   Split into ${ranges.length} API calls (each ≤31 days)`);
+  console.log(`   Split into ${ranges.length} API calls (each ≤31 days)`);;
   
   const allBookings = [];
   
-  // Make multiple API calls
+  // Make multiple API calls with pagination support
   for (let i = 0; i < ranges.length; i++) {
     const range = ranges[i];
     console.log(`   Call ${i + 1}/${ranges.length}: ${range.label}`);
     console.log(`     ${range.start.toISOString()} to ${range.end.toISOString()}`);
     
+    let cursor = undefined;
+    let pageCount = 0;
+    const maxPages = 10; // Prevent infinite loops
+    
     try {
-      const bookingsResponse = await squareClient.bookingsApi.listBookings(
-        undefined,
-        undefined,
-        customerId,
-        undefined,
-        LOCATION_ID,
-        range.start.toISOString(),
-        range.end.toISOString()
-      );
-      
-      const rangeBookings = bookingsResponse.result.bookings || [];
-      console.log(`     Found ${rangeBookings.length} bookings in this range`);
-      
-      // Add to collection (avoid duplicates by checking ID)
-      rangeBookings.forEach(booking => {
-        if (!allBookings.find(b => b.id === booking.id)) {
-          allBookings.push(booking);
+      // Pagination loop for this time range
+      do {
+        pageCount++;
+        console.log(`     Page ${pageCount}${cursor ? ' (cursor: ' + cursor.substring(0, 20) + '...)' : ''}`);
+        
+        const bookingsResponse = await squareClient.bookingsApi.listBookings(
+          cursor,
+          undefined,
+          customerId,
+          undefined,
+          LOCATION_ID,
+          range.start.toISOString(),
+          range.end.toISOString()
+        );
+        
+        const rangeBookings = bookingsResponse.result.bookings || [];
+        console.log(`       Found ${rangeBookings.length} bookings on this page`);
+        
+        // Add to collection (avoid duplicates by checking ID)
+        rangeBookings.forEach(booking => {
+          if (!allBookings.find(b => b.id === booking.id)) {
+            allBookings.push(booking);
+          }
+        });
+        
+        // Get cursor for next page
+        cursor = bookingsResponse.result.cursor;
+        
+        // Safety check to prevent infinite loops
+        if (pageCount >= maxPages) {
+          console.log(`     ⚠️ Reached max pages (${maxPages}) for this range, stopping pagination`);
+          break;
         }
-      });
+        
+      } while (cursor); // Continue while there are more pages
+      
+      console.log(`     Total from range: ${allBookings.length} bookings`);
+      
     } catch (error) {
       console.error(`     ⚠️ Error fetching range ${range.label}:`, error.message);
       // Continue with other ranges even if one fails
