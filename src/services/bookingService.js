@@ -418,6 +418,7 @@ export async function cancelBooking(bookingId) {
 
 /**
  * Lookup customer bookings
+ * FIX v2.9.8: Enhanced pagination cursor debugging
  * FIX v2.9.7: Separate active, completed, and cancelled bookings
  * 
  * Returns appointments from 60 days past to 60 days future
@@ -501,10 +502,10 @@ export async function lookupCustomerBookings(customerId) {
     const maxPages = 10; // Prevent infinite loops
     
     try {
-      // Pagination loop for this time range
+      // FIX v2.9.8: Enhanced pagination loop with detailed cursor debugging
       do {
         pageCount++;
-        console.log(`      Page ${pageCount}${cursor ? ' (cursor: ' + cursor.substring(0, 20) + '...)' : ''}`);
+        console.log(`      📄 Page ${pageCount}${cursor ? ' (using cursor: ' + cursor.substring(0, 30) + '...)' : ' (initial request)'}`);
         
         const bookingsResponse = await squareClient.bookingsApi.listBookings(
           cursor,
@@ -517,7 +518,7 @@ export async function lookupCustomerBookings(customerId) {
         );
         
         const rangeBookings = bookingsResponse.result.bookings || [];
-        console.log(`         Found ${rangeBookings.length} bookings on this page`);
+        console.log(`         📦 Found ${rangeBookings.length} bookings on this page`);
         
         // Log booking details for debugging
         rangeBookings.forEach(booking => {
@@ -535,8 +536,17 @@ export async function lookupCustomerBookings(customerId) {
           }
         });
         
-        // Get cursor for next page
+        // FIX v2.9.8: Enhanced cursor debugging
+        const previousCursor = cursor;
         cursor = bookingsResponse.result.cursor;
+        
+        // Log cursor status for debugging
+        if (cursor) {
+          console.log(`         ✅ Got cursor for next page (continuing pagination)`);
+          console.log(`            Cursor: ${cursor.substring(0, 50)}...`);
+        } else {
+          console.log(`         ✅ No more pages for this range (cursor is ${cursor === null ? 'null' : 'undefined'})`);
+        }
         
         // Safety check to prevent infinite loops
         if (pageCount >= maxPages) {
@@ -544,7 +554,7 @@ export async function lookupCustomerBookings(customerId) {
           break;
         }
         
-      } while (cursor); // Continue while there are more pages
+      } while (cursor); // Continue while cursor exists
       
     } catch (error) {
       console.error(`      ⚠️  Error fetching range ${range.label}:`, error.message);
