@@ -13,38 +13,21 @@ export function getServiceDuration(serviceVariationId) {
 
 /**
  * Parse and convert booking start time from EDT to UTC
- * CRITICAL FIX: Properly handle EDT -> UTC conversion
+ * CRITICAL FIX v2.9.1: Use native Date parser for correct timezone handling
  */
 export function parseBookingTime(startTime) {
   console.log(`🕐 parseBookingTime received: ${startTime}`);
   
   // Check if time is in EDT format (ends with -04:00 or -05:00)
   if (startTime.includes('-04:00') || startTime.includes('-05:00')) {
-    // Parse the EDT time string components
-    // Format: 2025-10-13T14:00:00-04:00 (2pm EDT)
-    const match = startTime.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([-+]\d{2}):(\d{2})/);
+    // Use JavaScript's built-in Date parser - it handles timezone offsets correctly
+    // Input: "2025-10-14T11:00:00-04:00" (11 AM EDT)
+    // Output: "2025-10-14T15:00:00.000Z" (3 PM UTC) which Square displays as 11 AM EDT
+    const edtDate = new Date(startTime);
     
-    if (match) {
-      const [, year, month, day, hours, minutes, seconds, offsetHours, offsetMinutes] = match;
-      
-      // Create Date object treating the time as UTC FIRST
-      const utcDate = new Date(Date.UTC(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day),
-        parseInt(hours),
-        parseInt(minutes),
-        parseInt(seconds)
-      ));
-      
-      // Now SUBTRACT the offset to get true UTC
-      // EDT is UTC-4, so 2pm EDT = 2pm - (-4) = 6pm UTC (18:00)
-      const offsetMinutesTotal = parseInt(offsetHours) * 60 + parseInt(offsetMinutes);
-      const utcTimestamp = utcDate.getTime() - (offsetMinutesTotal * 60 * 1000);
-      const finalUTCDate = new Date(utcTimestamp);
-      
-      const bookingStartTime = finalUTCDate.toISOString();
-      console.log(`✅ Converted EDT to UTC correctly:`);
+    if (!isNaN(edtDate.getTime())) {
+      const bookingStartTime = edtDate.toISOString();
+      console.log(`✅ Converted EDT to UTC:`);
       console.log(`   Input (EDT): ${startTime}`);
       console.log(`   Output (UTC): ${bookingStartTime}`);
       
