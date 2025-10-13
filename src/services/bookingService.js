@@ -418,61 +418,78 @@ export async function cancelBooking(bookingId) {
 
 /**
  * Lookup customer bookings
+ * FIX v2.9.6: Future-first search priority + fixed time boundaries
+ * 
  * Returns appointments from 60 days past to 60 days future
- * IMPORTANT: Square API has a 31-day limit per call, so we make multiple calls
- * FIX v2.9.4: Added pagination support to handle cursor and retrieve all pages
+ * Square API has a 31-day limit per call, so we make multiple calls
+ * Added pagination support to handle cursor and retrieve all pages
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
   
   console.log(`🔍 Looking up bookings for customer ${customerId}`);
-  console.log(`   Strategy: Multiple API calls with pagination (Square has 31-day limit per call)`);;
+  console.log(`   Current time: ${now.toISOString()}`);
+  console.log(`   Strategy: FUTURE-FIRST search with pagination (Square has 31-day limit per call)`);
   
-  // Define our desired ranges
+  // Define time boundaries
   const past60 = new Date(now);
   past60.setDate(past60.getDate() - 60);
   
   const future60 = new Date(now);
   future60.setDate(future60.getDate() + 60);
   
-  // Split into multiple ranges staying STRICTLY within Square's 31-day limit
+  // CRITICAL FIX: Start "now" range 1 hour earlier to catch boundary appointments
+  const nowMinusBuffer = new Date(now.getTime() - (60 * 60 * 1000)); // 1 hour buffer
+  
+  // PRIORITY ORDER: Search FUTURE first (for cancellations/reschedules)
   const ranges = [
-    // Past: 60-31 days ago (29 days)
+    // 1. TODAY/TOMORROW: Now (minus 1hr buffer) to +7 days (MOST IMPORTANT - catches today/tomorrow)
     { 
-      start: new Date(past60), 
-      end: new Date(now.getTime() - (31 * 24 * 60 * 60 * 1000)), 
-      label: '60-31 days ago' 
+      start: nowMinusBuffer,
+      end: new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)), 
+      label: 'NOW to +7 days (TODAY/TOMORROW priority)',
+      priority: 'HIGH'
     },
-    // Past: 30 days ago to now (30 days)
+    // 2. NEAR FUTURE: +7 to +30 days
     { 
-      start: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)), 
-      end: new Date(now), 
-      label: '30 days ago to now' 
-    },
-    // Current: now to +30 days (30 days) - includes today and tomorrow
-    { 
-      start: new Date(now), 
+      start: new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)),
       end: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), 
-      label: 'now to +30 days' 
+      label: '+7 to +30 days',
+      priority: 'MEDIUM'
     },
-    // Future: +30 to +60 days (30 days)
+    // 3. FAR FUTURE: +30 to +60 days
     { 
-      start: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), 
-      end: new Date(future60), 
-      label: '+30 to +60 days' 
+      start: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)),
+      end: future60, 
+      label: '+30 to +60 days',
+      priority: 'MEDIUM'
+    },
+    // 4. RECENT PAST: 30 days ago to now (for reference)
+    { 
+      start: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)),
+      end: now, 
+      label: '30 days ago to now',
+      priority: 'LOW'
+    },
+    // 5. OLD PAST: 60-31 days ago (rarely needed)
+    { 
+      start: past60,
+      end: new Date(now.getTime() - (31 * 24 * 60 * 60 * 1000)), 
+      label: '60-31 days ago',
+      priority: 'LOW'
     }
   ];
   
   console.log(`   Total range: ${past60.toISOString()} to ${future60.toISOString()}`);
-  console.log(`   Split into ${ranges.length} API calls (each ≤31 days)`);;
+  console.log(`   Searching ${ranges.length} ranges in FUTURE-FIRST priority order`);
   
   const allBookings = [];
   
   // Make multiple API calls with pagination support
   for (let i = 0; i < ranges.length; i++) {
     const range = ranges[i];
-    console.log(`   Call ${i + 1}/${ranges.length}: ${range.label}`);
-    console.log(`     ${range.start.toISOString()} to ${range.end.toISOString()}`);
+    console.log(`\n   📍 Range ${i + 1}/${ranges.length}: ${range.label} [${range.priority} priority]`);
+    console.log(`      ${range.start.toISOString()} to ${range.end.toISOString()}`);
     
     let cursor = undefined;
     let pageCount = 0;
@@ -482,7 +499,7 @@ export async function lookupCustomerBookings(customerId) {
       // Pagination loop for this time range
       do {
         pageCount++;
-        console.log(`     Page ${pageCount}${cursor ? ' (cursor: ' + cursor.substring(0, 20) + '...)' : ''}`);
+        console.log(`      Page ${pageCount}${cursor ? ' (cursor: ' + cursor.substring(0, 20) + '...)' : ''}`);
         
         const bookingsResponse = await squareClient.bookingsApi.listBookings(
           cursor,
@@ -495,7 +512,14 @@ export async function lookupCustomerBookings(customerId) {
         );
         
         const rangeBookings = bookingsResponse.result.bookings || [];
-        console.log(`       Found ${rangeBookings.length} bookings on this page`);
+        console.log(`         Found ${rangeBookings.length} bookings on this page`);
+        
+        // Log booking details for debugging
+        rangeBookings.forEach(booking => {
+          const status = booking.status;
+          const isActive = status !== 'CANCELLED_BY_SELLER' && status !== 'CANCELLED_BY_CUSTOMER';
+          console.log(`         - ${booking.id}: ${booking.startAt} [${status}]${isActive ? ' ✅ ACTIVE' : ''}`);
+        });
         
         // Add to collection (avoid duplicates by checking ID)
         rangeBookings.forEach(booking => {
@@ -509,16 +533,16 @@ export async function lookupCustomerBookings(customerId) {
         
         // Safety check to prevent infinite loops
         if (pageCount >= maxPages) {
-          console.log(`     ⚠️ Reached max pages (${maxPages}) for this range, stopping pagination`);
+          console.log(`      ⚠️  Reached max pages (${maxPages}) for this range, stopping pagination`);
           break;
         }
         
       } while (cursor); // Continue while there are more pages
       
-      console.log(`     Total from range: ${allBookings.length} bookings`);
+      console.log(`      ✅ Total from this range: ${rangeBookings.length} bookings`);
       
     } catch (error) {
-      console.error(`     ⚠️ Error fetching range ${range.label}:`, error.message);
+      console.error(`      ⚠️  Error fetching range ${range.label}:`, error.message);
       // Continue with other ranges even if one fails
     }
   }
@@ -543,7 +567,17 @@ export async function lookupCustomerBookings(customerId) {
     }
   });
   
-  console.log(`✅ Total: ${rawBookings.length} bookings (${activeBookings.length} active, ${cancelledBookings.length} cancelled)`);
+  console.log(`\n✅ FINAL RESULTS: ${rawBookings.length} total bookings`);
+  console.log(`   - ${activeBookings.length} ACTIVE bookings`);
+  console.log(`   - ${cancelledBookings.length} cancelled bookings`);
+  
+  // Log active bookings for easy debugging
+  if (activeBookings.length > 0) {
+    console.log(`\n   📅 Active appointments:`);
+    activeBookings.forEach(booking => {
+      console.log(`      - ${booking.id}: ${booking.startAt_formatted}`);
+    });
+  }
   
   // Create clear message
   let message = '';
