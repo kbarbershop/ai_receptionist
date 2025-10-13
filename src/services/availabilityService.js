@@ -3,6 +3,9 @@ import { LOCATION_ID } from '../config/constants.js';
 import { sanitizeBigInt } from '../utils/bigint.js';
 import { formatTimeSlot } from '../utils/datetime.js';
 
+// Default service variation ID for Regular Haircut
+const DEFAULT_SERVICE_VARIATION_ID = '7XPUHGDLY4N3H2OWTHMIABKF';
+
 /**
  * Parse date/time input and determine search window
  */
@@ -92,10 +95,18 @@ export async function getActiveBookings(startAt, endAt, locationId = LOCATION_ID
 
 /**
  * Search for available time slots
+ * FIX v2.8.15: Add default serviceVariationId if not provided
  */
 export async function searchAvailableSlots(startAt, endAt, serviceVariationId, teamMemberId = null) {
+  // Use default Regular Haircut service if not provided
+  const finalServiceId = serviceVariationId || DEFAULT_SERVICE_VARIATION_ID;
+  
+  if (!serviceVariationId) {
+    console.log(`⚠️ No serviceVariationId provided, using default: ${DEFAULT_SERVICE_VARIATION_ID} (Regular Haircut)`);
+  }
+  
   const segmentFilter = {
-    serviceVariationId: serviceVariationId
+    serviceVariationId: finalServiceId
   };
   
   if (teamMemberId) {
@@ -117,7 +128,7 @@ export async function searchAvailableSlots(startAt, endAt, serviceVariationId, t
     }
   };
   
-  console.log(`🔧 Calling Square searchAvailability`);
+  console.log(`🔧 Calling Square searchAvailability with serviceId: ${finalServiceId}`);
   const response = await squareClient.bookingsApi.searchAvailability(apiParams);
   
   const rawSlots = sanitizeBigInt(response.result.availabilities || []);
