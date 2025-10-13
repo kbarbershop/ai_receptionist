@@ -294,13 +294,10 @@ router.post('/cancelBooking', async (req, res) => {
 
 /**
  * Lookup Booking by Phone
- * FIX v2.9.5: Enhanced response messaging for "customer found but no active bookings" case
  */
 router.post('/lookupBooking', async (req, res) => {
   try {
     const { customerPhone, customerName } = req.body;
-
-    console.log(`🔍 lookupBooking called with phone: ${customerPhone}`);
 
     if (!customerPhone) {
       return res.status(400).json({
@@ -313,49 +310,27 @@ router.post('/lookupBooking', async (req, res) => {
     const customer = await findCustomerByPhoneMultiFormat(customerPhone);
     
     if (!customer) {
-      console.log(`   ❌ No customer found for phone: ${customerPhone}`);
       return res.json({
         success: true,
         found: false,
-        hasCustomer: false,
-        hasActiveBookings: false,
         message: 'No customer found with that phone number'
       });
     }
 
-    console.log(`✅ Customer found: ${customer.givenName} ${customer.familyName} (ID: ${customer.id})`);
-
     // Get bookings
     const bookingResult = await lookupCustomerBookings(customer.id);
-
-    console.log(`   Booking result: ${bookingResult.activeCount} active, ${bookingResult.cancelledCount} cancelled`);
 
     // Sanitize BigInt values before returning
     const sanitizedResult = sanitizeBigInt({
       success: true,
       found: true,
-      hasCustomer: true,
-      hasActiveBookings: bookingResult.activeCount > 0,
-      customer: {
-        id: customer.id,
-        givenName: customer.givenName,
-        familyName: customer.familyName,
-        fullName: `${customer.givenName || ''} ${customer.familyName || ''}`.trim(),
-        phoneNumber: customer.phoneNumber,
-        emailAddress: customer.emailAddress
-      },
-      ...bookingResult,
-      // Enhanced message for AI agent clarity
-      userFriendlyMessage: bookingResult.activeCount > 0 
-        ? `Found ${bookingResult.activeCount} active booking(s) for ${customer.givenName} ${customer.familyName}`
-        : bookingResult.cancelledCount > 0
-        ? `${customer.givenName} ${customer.familyName} is a known customer, but has no active appointments. There ${bookingResult.cancelledCount === 1 ? 'is' : 'are'} ${bookingResult.cancelledCount} cancelled booking(s) on record.`
-        : `${customer.givenName} ${customer.familyName} is a known customer, but has no appointments on record.`
+      customer: customer,
+      ...bookingResult
     });
 
     res.json(sanitizedResult);
   } catch (error) {
-    console.error('❌ lookupBooking error:', error);
+    console.error('lookupBooking error:', error);
     res.status(500).json({
       success: false,
       error: error.message
