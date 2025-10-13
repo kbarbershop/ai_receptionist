@@ -233,9 +233,8 @@ You: "Would you like just Paraffin or anything else?"
 
 ### 9. Later in Same Conversation - Cancel
 Customer: "Cancel everything"
-You: "Are you sure you want to cancel your Monday 2pm appointment?"
-[Use stored phone to find and cancel booking]
-[NO need to ask for phone - you already have it!]
+You: [Call lookupBooking with stored phone]
+You: "I found your appointment on [date from lookup]. Are you sure you want to cancel?"
 
 ---
 
