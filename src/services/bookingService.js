@@ -420,7 +420,7 @@ export async function cancelBooking(bookingId) {
  * Lookup customer bookings
  * Returns appointments from 60 days past to 60 days future
  * IMPORTANT: Square API has a 31-day limit per call, so we make multiple calls
- * FIX v2.9.2: Improved date ranges to prevent edge case misses
+ * FIX v2.9.3: Corrected ranges to stay within Square's 31-day limit
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
@@ -435,37 +435,38 @@ export async function lookupCustomerBookings(customerId) {
   const future60 = new Date(now);
   future60.setDate(future60.getDate() + 60);
   
-  // Split into multiple ranges staying under Square's 31-day limit
-  // FIXED: Extended current range to catch edge cases (yesterday to +31 days)
+  // Split into multiple ranges staying STRICTLY within Square's 31-day limit
+  // FIX v2.9.3: Changed "yesterday to +31 days" to "now to +30 days" 
+  // to avoid 32-day range that caused 400 error
   const ranges = [
-    // Past: 60-31 days ago
+    // Past: 60-31 days ago (29 days)
     { 
       start: new Date(past60), 
       end: new Date(now.getTime() - (31 * 24 * 60 * 60 * 1000)), 
       label: '60-31 days ago' 
     },
-    // Past: 30 days ago to yesterday
+    // Past: 30 days ago to now (30 days)
     { 
       start: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)), 
-      end: new Date(now.getTime() - (24 * 60 * 60 * 1000)), 
-      label: '30 days ago to yesterday' 
+      end: new Date(now), 
+      label: '30 days ago to now' 
     },
-    // Current: Yesterday to +31 days (includes today and tomorrow)
+    // Current: now to +30 days (30 days) - includes today and tomorrow
     { 
-      start: new Date(now.getTime() - (24 * 60 * 60 * 1000)), 
-      end: new Date(now.getTime() + (31 * 24 * 60 * 60 * 1000)), 
-      label: 'yesterday to +31 days' 
+      start: new Date(now), 
+      end: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), 
+      label: 'now to +30 days' 
     },
-    // Future: +31 to +60 days
+    // Future: +30 to +60 days (30 days)
     { 
-      start: new Date(now.getTime() + (31 * 24 * 60 * 60 * 1000)), 
+      start: new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)), 
       end: new Date(future60), 
-      label: '+31 to +60 days' 
+      label: '+30 to +60 days' 
     }
   ];
   
   console.log(`   Total range: ${past60.toISOString()} to ${future60.toISOString()}`);
-  console.log(`   Split into ${ranges.length} API calls (each ≤32 days)`);
+  console.log(`   Split into ${ranges.length} API calls (each ≤31 days)`);
   
   const allBookings = [];
   
