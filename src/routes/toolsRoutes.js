@@ -294,10 +294,13 @@ router.post('/cancelBooking', async (req, res) => {
 
 /**
  * Lookup Booking by Phone
+ * 🔥 FIXED v2.9.2: Explicit hasActiveBookings field for AI agent clarity
  */
 router.post('/lookupBooking', async (req, res) => {
   try {
     const { customerPhone, customerName } = req.body;
+
+    console.log(`🔍 lookupBooking called with phone: ${customerPhone}`);
 
     if (!customerPhone) {
       return res.status(400).json({
@@ -310,27 +313,55 @@ router.post('/lookupBooking', async (req, res) => {
     const customer = await findCustomerByPhoneMultiFormat(customerPhone);
     
     if (!customer) {
+      console.log(`   ❌ Customer not found`);
       return res.json({
         success: true,
         found: false,
+        hasActiveBookings: false,
         message: 'No customer found with that phone number'
       });
     }
 
+    console.log(`   ✅ Customer found: ${customer.givenName} ${customer.familyName}`);
+
     // Get bookings
     const bookingResult = await lookupCustomerBookings(customer.id);
+
+    console.log(`   📋 Found ${bookingResult.activeCount} active, ${bookingResult.cancelledCount} cancelled`);
+
+    // Create explicit response for AI agent
+    const hasActiveBookings = bookingResult.activeCount > 0;
+    
+    // Build clear message
+    let message;
+    if (hasActiveBookings) {
+      if (bookingResult.activeCount === 1) {
+        const booking = bookingResult.activeBookings[0];
+        message = `Customer has 1 active appointment: ${booking.startAt_formatted}`;
+      } else {
+        message = `Customer has ${bookingResult.activeCount} active appointments`;
+      }
+    } else if (bookingResult.cancelledCount > 0) {
+      message = `Customer has ${bookingResult.cancelledCount} cancelled booking(s) but no active appointments`;
+    } else {
+      message = 'Customer has no bookings';
+    }
 
     // Sanitize BigInt values before returning
     const sanitizedResult = sanitizeBigInt({
       success: true,
       found: true,
+      hasActiveBookings: hasActiveBookings,  // ⭐ Explicit boolean for AI
       customer: customer,
+      message: message,  // ⭐ Clear summary message
       ...bookingResult
     });
 
+    console.log(`   📤 Response: hasActiveBookings=${hasActiveBookings}, message="${message}"`);
+
     res.json(sanitizedResult);
   } catch (error) {
-    console.error('lookupBooking error:', error);
+    console.error('❌ lookupBooking error:', error);
     res.status(500).json({
       success: false,
       error: error.message
