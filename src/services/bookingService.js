@@ -418,11 +418,16 @@ export async function cancelBooking(bookingId) {
 
 /**
  * Lookup customer bookings
- * FIX v2.9.6: Future-first search priority + fixed time boundaries
+ * FIX v2.9.7: Separate active, completed, and cancelled bookings
  * 
  * Returns appointments from 60 days past to 60 days future
  * Square API has a 31-day limit per call, so we make multiple calls
  * Added pagination support to handle cursor and retrieve all pages
+ * 
+ * THREE CATEGORIES:
+ * - Active: Future appointments (primary for AI agent)
+ * - Completed: Past appointments (available on request)
+ * - Cancelled: Hidden from AI agent entirely
  */
 export async function lookupCustomerBookings(customerId) {
   const now = new Date();
@@ -517,8 +522,10 @@ export async function lookupCustomerBookings(customerId) {
         // Log booking details for debugging
         rangeBookings.forEach(booking => {
           const status = booking.status;
-          const isActive = status !== 'CANCELLED_BY_SELLER' && status !== 'CANCELLED_BY_CUSTOMER';
-          console.log(`         - ${booking.id}: ${booking.startAt} [${status}]${isActive ? ' ✅ ACTIVE' : ''}`);
+          const isCancelled = status === 'CANCELLED_BY_SELLER' || status === 'CANCELLED_BY_CUSTOMER';
+          const bookingTime = new Date(booking.startAt);
+          const isFuture = bookingTime > now;
+          console.log(`         - ${booking.id}: ${booking.startAt} [${status}]${isFuture ? ' 🔴 FUTURE' : ' 🟢 PAST'}${isCancelled ? ' ⚫ CANCELLED' : ''}`);
         });
         
         // Add to collection (avoid duplicates by checking ID)
@@ -539,8 +546,6 @@ export async function lookupCustomerBookings(customerId) {
         
       } while (cursor); // Continue while there are more pages
       
-      console.log(`      ✅ Total from this range: ${rangeBookings.length} bookings`);
-      
     } catch (error) {
       console.error(`      ⚠️  Error fetching range ${range.label}:`, error.message);
       // Continue with other ranges even if one fails
@@ -549,53 +554,61 @@ export async function lookupCustomerBookings(customerId) {
   
   const rawBookings = sanitizeBigInt(allBookings);
   
-  // Separate active and cancelled bookings
-  const activeBookings = [];
-  const cancelledBookings = [];
+  // FIX v2.9.7: Separate into THREE categories
+  const activeBookings = [];      // Future appointments
+  const completedBookings = [];   // Past completed appointments
+  const cancelledBookings = [];   // Cancelled (hidden from AI)
   
   rawBookings.forEach(booking => {
+    const bookingTime = new Date(booking.startAt);
+    const isFuture = bookingTime > now;
+    const isCancelled = booking.status === 'CANCELLED_BY_SELLER' || booking.status === 'CANCELLED_BY_CUSTOMER';
+    
     const formattedBooking = {
       ...booking,
       startAt_formatted: formatUTCtoEDT(booking.startAt),
       startAt_utc: booking.startAt
     };
     
-    if (booking.status === 'CANCELLED_BY_SELLER' || booking.status === 'CANCELLED_BY_CUSTOMER') {
-      cancelledBookings.push(formattedBooking);
+    if (isCancelled) {
+      cancelledBookings.push(formattedBooking);  // Hidden from AI
+    } else if (isFuture) {
+      activeBookings.push(formattedBooking);     // PRIMARY - shown first
     } else {
-      activeBookings.push(formattedBooking);
+      completedBookings.push(formattedBooking);  // Available on request
     }
   });
   
   console.log(`\n✅ FINAL RESULTS: ${rawBookings.length} total bookings`);
-  console.log(`   - ${activeBookings.length} ACTIVE bookings`);
-  console.log(`   - ${cancelledBookings.length} cancelled bookings`);
+  console.log(`   - ${activeBookings.length} ACTIVE (future) bookings`);
+  console.log(`   - ${completedBookings.length} COMPLETED (past) bookings`);
+  console.log(`   - ${cancelledBookings.length} CANCELLED bookings (hidden from AI)`);
   
   // Log active bookings for easy debugging
   if (activeBookings.length > 0) {
-    console.log(`\n   📅 Active appointments:`);
+    console.log(`\n   📅 Active appointments (FUTURE):`);
     activeBookings.forEach(booking => {
       console.log(`      - ${booking.id}: ${booking.startAt_formatted}`);
     });
   }
   
-  // Create clear message
+  // Create clear message focused on ACTIVE bookings
   let message = '';
-  if (activeBookings.length > 0 && cancelledBookings.length > 0) {
-    message = `Found ${activeBookings.length} active booking(s) and ${cancelledBookings.length} cancelled booking(s)`;
-  } else if (activeBookings.length > 0) {
+  if (activeBookings.length > 0) {
     message = `Found ${activeBookings.length} active booking(s)`;
-  } else if (cancelledBookings.length > 0) {
-    message = `Found ${cancelledBookings.length} cancelled booking(s) but no active bookings`;
+  } else if (completedBookings.length > 0) {
+    message = `No active bookings. Found ${completedBookings.length} past completed appointment(s).`;
   } else {
-    message = 'No bookings found in the past 60 days or next 60 days';
+    message = 'No active or completed bookings found';
   }
   
   return {
     activeBookings,
-    cancelledBookings,
+    completedBookings,
+    cancelledBookings,  // Still returned but will be filtered out in toolsRoutes
     totalBookings: rawBookings.length,
     activeCount: activeBookings.length,
+    completedCount: completedBookings.length,
     cancelledCount: cancelledBookings.length,
     message
   };
