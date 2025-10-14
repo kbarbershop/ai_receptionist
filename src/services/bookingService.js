@@ -509,7 +509,7 @@ export async function lookupCustomerBookings(customerId) {
         
         const bookingsResponse = await squareClient.bookingsApi.listBookings(
           cursor,
-          undefined,
+          10,
           customerId,
           undefined,
           LOCATION_ID,
