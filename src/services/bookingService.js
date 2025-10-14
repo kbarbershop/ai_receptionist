@@ -508,13 +508,13 @@ export async function lookupCustomerBookings(customerId) {
         console.log(`      📄 Page ${pageCount}${cursor ? ' (using cursor: ' + cursor.substring(0, 30) + '...)' : ' (initial request)'}`);
         
         const bookingsResponse = await squareClient.bookingsApi.listBookings(
-          cursor,
-          10,
-          customerId,
-          undefined,
-          LOCATION_ID,
-          range.start.toISOString(),
-          range.end.toISOString()
+          10,           // limit (1st param)
+          undefined,    // cursor (2nd param) ← FIXED
+          customerId,   // customerId (3rd param)
+          undefined,    // teamMemberId (4th param)
+          LOCATION_ID,  // locationId (5th param)
+          now.toISOString(),
+          future.toISOString()
         );
         
         const rangeBookings = bookingsResponse.result.bookings || [];
