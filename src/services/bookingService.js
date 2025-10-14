@@ -513,8 +513,8 @@ export async function lookupCustomerBookings(customerId) {
           customerId,   // customerId (3rd param)
           undefined,    // teamMemberId (4th param)
           LOCATION_ID,  // locationId (5th param)
-          now.toISOString(),
-          future.toISOString()
+          range.start.toISOString(),   // ✅ Use range.start
+          range.end.toISOString()      // ✅ Use range.end
         );
         
         const rangeBookings = bookingsResponse.result.bookings || [];
