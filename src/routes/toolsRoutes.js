@@ -12,8 +12,8 @@ const router = express.Router();
 /**
  * OPTIMIZED v2.8.16: Get Current Date/Time
  * Reduced latency from 6.3s to <50ms (128x faster)
- * - Removed redundant toLocaleString calls
- * - Simplified date math
+ * - Reduced redundant date calculations
+ * - Optimized toLocaleString usage
  * - Streamlined response structure
  */
 router.post('/getCurrentDateTime', async (req, res) => {
@@ -21,7 +21,6 @@ router.post('/getCurrentDateTime', async (req, res) => {
     const now = new Date();
     const dayOfWeek = now.getDay();
     
-    // OPTIMIZED: Single toLocaleString call
     const edtString = now.toLocaleString('en-US', {
       timeZone: TIMEZONE,
       weekday: 'long',
@@ -33,7 +32,7 @@ router.post('/getCurrentDateTime', async (req, res) => {
       hour12: true
     });
     
-    // OPTIMIZED: Simplified calculations
+    // Calculate next Thursday
     const daysUntilThursday = (4 - dayOfWeek + 7) % 7 || 7;
     const nextThursday = new Date(now);
     nextThursday.setDate(now.getDate() + daysUntilThursday);
@@ -45,6 +44,7 @@ router.post('/getCurrentDateTime', async (req, res) => {
       year: 'numeric'
     });
     
+    // Calculate tomorrow
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
     
@@ -89,6 +89,7 @@ router.post('/getAvailability', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required field: startDate or datetime' });
     }
     
+    console.log(`🔍 getAvailability: ${startDate || datetime}`);
     const result = await getAvailability(startDate, datetime, serviceVariationId, teamMemberId);
     res.json(result);
   } catch (error) {
@@ -108,7 +109,7 @@ router.post('/getAvailability', async (req, res) => {
  * OPTIMIZED v2.8.16: Create New Booking
  * - Early validation
  * - Optimized service ID parsing with filter(Boolean)
- * - Reduced verbose logging
+ * - Minimal success logging
  */
 router.post('/createBooking', async (req, res) => {
   try {
@@ -140,6 +141,8 @@ router.post('/createBooking', async (req, res) => {
       Object.keys(SERVICE_MAPPINGS).find(name => SERVICE_MAPPINGS[name] === id) || 'Unknown Service'
     );
 
+    console.log(`📅 createBooking: ${customerName} - ${startTime} (${serviceNames.length} services)`);
+    
     res.json({
       success: true,
       booking,
@@ -179,6 +182,7 @@ router.post('/addServicesToBooking', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required field: serviceNames' });
     }
 
+    console.log(`➕ addServicesToBooking: ${bookingId} + ${serviceNames.length} services`);
     const result = await addServicesToBooking(bookingId, serviceNames);
     res.json(result);
   } catch (error) {
@@ -200,6 +204,7 @@ router.post('/rescheduleBooking', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required fields: bookingId, newStartTime' });
     }
 
+    console.log(`🔄 rescheduleBooking: ${bookingId} → ${newStartTime}`);
     const result = await rescheduleBooking(bookingId, newStartTime);
     res.json(result);
   } catch (error) {
@@ -221,6 +226,7 @@ router.post('/cancelBooking', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required field: bookingId' });
     }
 
+    console.log(`❌ cancelBooking: ${bookingId}`);
     const result = await cancelBooking(bookingId);
     res.json(result);
   } catch (error) {
@@ -250,6 +256,8 @@ router.post('/lookupBooking', async (req, res) => {
 
     const bookingResult = await lookupCustomerBookings(customer.id);
 
+    console.log(`📋 lookupBooking: ${customer.givenName} ${customer.familyName} (${bookingResult.activeCount} active)`);
+
     // OPTIMIZED: Streamlined response
     const sanitizedResult = sanitizeBigInt({
       success: true,
@@ -272,7 +280,7 @@ router.post('/lookupBooking', async (req, res) => {
 
 /**
  * OPTIMIZED v2.8.16: Lookup Customer by Phone
- * - Reduced console.log overhead
+ * - Minimal logging for successful lookups
  */
 router.post('/lookupCustomer', async (req, res) => {
   try {
@@ -287,6 +295,8 @@ router.post('/lookupCustomer', async (req, res) => {
     if (!customer) {
       return res.json({ success: true, found: false });
     }
+
+    console.log(`👤 lookupCustomer: ${customer.givenName} ${customer.familyName}`);
 
     res.json({
       success: true,
@@ -309,63 +319,76 @@ router.post('/lookupCustomer', async (req, res) => {
 /**
  * OPTIMIZED v2.8.16: General Inquiry
  * - Parallel API calls with Promise.allSettled for 3x speedup
- * - Reduced error logging overhead
+ * - Safe result building pattern
+ * - Minimal logging
  */
 router.post('/generalInquiry', async (req, res) => {
   try {
     const { inquiryType } = req.body;
     const returnAll = !inquiryType;
-    const result = { success: true };
 
-    // OPTIMIZED: Parallel execution instead of sequential
+    console.log(`ℹ️ generalInquiry: ${inquiryType || 'all'}`);
+
+    // OPTIMIZED: Build promises array for parallel execution
     const promises = [];
+    const promiseKeys = [];
 
     if (returnAll || inquiryType === 'hours' || inquiryType === 'location') {
+      promiseKeys.push('location');
       promises.push(
         squareClient.locationsApi.retrieveLocation(LOCATION_ID)
-          .then(response => {
-            const location = response.result.location;
-            result.businessHours = location.businessHours || {};
-            result.timezone = location.timezone || TIMEZONE;
-            result.locationName = location.name;
-            result.address = location.address;
-            result.phoneNumber = location.phoneNumber;
-          })
-          .catch(error => {
-            console.error('❌ Location API:', error.message);
-            result.businessHoursError = error.message;
-          })
+          .then(response => ({
+            success: true,
+            data: {
+              businessHours: response.result.location.businessHours || {},
+              timezone: response.result.location.timezone || TIMEZONE,
+              locationName: response.result.location.name,
+              address: response.result.location.address,
+              phoneNumber: response.result.location.phoneNumber
+            }
+          }))
+          .catch(error => ({
+            success: false,
+            error: error.message,
+            field: 'businessHoursError'
+          }))
       );
     }
 
     if (returnAll || inquiryType === 'services' || inquiryType === 'pricing') {
+      promiseKeys.push('catalog');
       promises.push(
         squareClient.catalogApi.listCatalog(undefined, 'ITEM')
-          .then(response => {
-            result.services = (response.result.objects || []).map(item => ({
-              id: item.id,
-              name: item.itemData?.name,
-              description: item.itemData?.description,
-              variations: (item.itemData?.variations || []).map(variation => ({
-                id: variation.id,
-                name: variation.itemVariationData?.name,
-                price: variation.itemVariationData?.priceMoney?.amount 
-                  ? (Number(variation.itemVariationData.priceMoney.amount) / 100).toFixed(2)
-                  : null,
-                currency: variation.itemVariationData?.priceMoney?.currency || 'USD',
-                duration: safeBigIntToString(variation.itemVariationData?.serviceDuration)
-              }))
-            }));
-            result.servicesCount = result.services.length;
-          })
-          .catch(error => {
-            console.error('❌ Catalog API:', error.message);
-            result.servicesError = error.message;
-          })
+          .then(response => ({
+            success: true,
+            data: {
+              services: (response.result.objects || []).map(item => ({
+                id: item.id,
+                name: item.itemData?.name,
+                description: item.itemData?.description,
+                variations: (item.itemData?.variations || []).map(variation => ({
+                  id: variation.id,
+                  name: variation.itemVariationData?.name,
+                  price: variation.itemVariationData?.priceMoney?.amount 
+                    ? (Number(variation.itemVariationData.priceMoney.amount) / 100).toFixed(2)
+                    : null,
+                  currency: variation.itemVariationData?.priceMoney?.currency || 'USD',
+                  duration: safeBigIntToString(variation.itemVariationData?.serviceDuration)
+                }))
+              })),
+              servicesCount: (response.result.objects || []).length
+            }
+          }))
+          .catch(error => ({
+            success: false,
+            error: error.message,
+            field: 'servicesError'
+          }))
       );
     }
 
     if (returnAll || inquiryType === 'staff' || inquiryType === 'barbers' || inquiryType === 'team') {
+      promiseKeys.push('team');
       promises.push(
         squareClient.teamApi.searchTeamMembers({
           query: {
@@ -375,27 +398,49 @@ router.post('/generalInquiry', async (req, res) => {
             }
           }
         })
-          .then(response => {
-            result.teamMembers = (response.result.teamMembers || []).map(member => ({
-              id: member.id,
-              givenName: member.givenName,
-              familyName: member.familyName,
-              fullName: `${member.givenName || ''} ${member.familyName || ''}`.trim(),
-              emailAddress: member.emailAddress,
-              phoneNumber: member.phoneNumber,
-              isOwner: member.isOwner || false
-            }));
-            result.teamMembersCount = result.teamMembers.length;
-          })
-          .catch(error => {
-            console.error('❌ Team API:', error.message);
-            result.teamMembersError = error.message;
-          })
+          .then(response => ({
+            success: true,
+            data: {
+              teamMembers: (response.result.teamMembers || []).map(member => ({
+                id: member.id,
+                givenName: member.givenName,
+                familyName: member.familyName,
+                fullName: `${member.givenName || ''} ${member.familyName || ''}`.trim(),
+                emailAddress: member.emailAddress,
+                phoneNumber: member.phoneNumber,
+                isOwner: member.isOwner || false
+              })),
+              teamMembersCount: (response.result.teamMembers || []).length
+            }
+          }))
+          .catch(error => ({
+            success: false,
+            error: error.message,
+            field: 'teamMembersError'
+          }))
       );
     }
 
-    // OPTIMIZED: Wait for all promises to settle (parallel execution)
-    await Promise.allSettled(promises);
+    // OPTIMIZED: Parallel execution - wait for all promises
+    const results = await Promise.allSettled(promises);
+
+    // Build final result object safely
+    const result = { success: true };
+    
+    results.forEach((promiseResult, index) => {
+      if (promiseResult.status === 'fulfilled') {
+        const value = promiseResult.value;
+        if (value.success) {
+          Object.assign(result, value.data);
+        } else {
+          result[value.field] = value.error;
+          console.error(`❌ ${promiseKeys[index]} API:`, value.error);
+        }
+      } else {
+        console.error(`❌ ${promiseKeys[index]} Promise rejected:`, promiseResult.reason);
+      }
+    });
+
     res.json(result);
   } catch (error) {
     console.error('❌ generalInquiry:', error.message);
