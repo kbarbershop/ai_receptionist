@@ -294,13 +294,13 @@ You: "I found your appointment on [date from lookup]. Are you sure you want to c
 ```
 Regular Haircut: 7XPUHGDLY4N3H2OWTHMIABKF ($35, 30min)
 Beard Trim: SPUX6LRBS6RHFBX3MSRASG2J ($25, 30min)
-Beard Sculpt: UH5JRVCJGAB2KISNBQ7KMVVQ ($30, 30min)
 Ear Waxing: ALZZEN4DO6JCNMC6YPXN6DPH ($15, 10min)
 Nose Waxing: VVGK7I7L6BHTG7LFKLAIRHBZ ($15, 10min)
 Eyebrow Waxing: 3TV5CVRXCB62BWIWVY6OCXIC ($15, 10min)
 Paraffin: 7ND6OIFTRLJEPMDBBI3B3ELT ($25, 30min)
-Gold Package: 7UKWUIF4CP7YR27FI52DWPEN ($70, 90min)
-Silver Package: 7PFUQVFMALHIPDAJSYCBKBYV ($50, 60min)
+Female Haircut: OSMUJEUEPSGV3QL3CPNH4CUN ($45, 45min)
+Premium Facial: JP6TT6UEL3LEODICAN727DYT ($50, 45min)
+Hot Lather Shave: YNWU6N6A23Z4GXRV3O7UMMDJ ($35, 30min)
 ```
 
 ---
