@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Deploy Script for Square Booking Server (ElevenLabs Integration)
-# Last Updated: October 6, 2025
+# Last Updated: October 18, 2025 - v2.8.16 Performance Optimizations
 
 set -e  # Exit on error
 
@@ -46,6 +46,9 @@ gcloud run deploy ${SERVICE_NAME} \
   --platform managed \
   --region ${REGION} \
   --allow-unauthenticated \
+  --min-instances 1 \
+  --memory 512Mi \
+  --cpu 1 \
   --set-env-vars SQUARE_ACCESS_TOKEN=${SQUARE_ACCESS_TOKEN},SQUARE_LOCATION_ID=${SQUARE_LOCATION_ID} \
   --project ${PROJECT_ID}
 
@@ -63,15 +66,24 @@ echo "=================================================="
 echo "Service URL: https://square-mcp-server-265357944939.us-east4.run.app"
 echo "Region: ${REGION}"
 echo "Project: ${PROJECT_ID}"
+echo "Min Instances: 1 (always warm - no cold starts)"
+echo "Memory: 512Mi"
+echo "CPU: 1 vCPU"
+echo ""
+echo "💰 Estimated Monthly Cost: ~\$63/month"
+echo "   (Trade-off: Eliminates 6-second cold starts for instant <50ms responses)"
 echo ""
 echo "🔧 Available Endpoints:"
 echo "  - GET  /health"
 echo "  - GET  /analytics/sources"
+echo "  - POST /tools/getCurrentDateTime"
 echo "  - POST /tools/getAvailability"
 echo "  - POST /tools/createBooking"
+echo "  - POST /tools/addServicesToBooking"
 echo "  - POST /tools/rescheduleBooking"
 echo "  - POST /tools/cancelBooking"
 echo "  - POST /tools/lookupBooking"
+echo "  - POST /tools/lookupCustomer"
 echo "  - POST /tools/generalInquiry"
 echo ""
 echo "🧪 Test Health Check:"
@@ -82,7 +94,7 @@ echo "curl https://square-mcp-server-265357944939.us-east4.run.app/analytics/sou
 echo ""
 echo "📖 Next Steps:"
 echo "1. Test health endpoint above"
-echo "2. Configure tools in ElevenLabs (see ELEVENLABS_SETUP.md)"
-echo "3. Update agent system prompt"
-echo "4. Test booking workflows"
+echo "2. Test getCurrentDateTime endpoint - should be <50ms"
+echo "3. Test generalInquiry - first call ~45ms, cached calls <1ms"
+echo "4. Monitor Cloud Run logs for performance metrics"
 echo ""
