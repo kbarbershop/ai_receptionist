@@ -9,9 +9,9 @@ import { safeBigIntToString, sanitizeBigInt } from '../utils/bigint.js';
 
 const router = express.Router();
 
-// OPTIMIZATION: Cache for generalInquiry (1-hour TTL)
-let cachedInquiryData = null;
-let cacheTimestamp = 0;
+// OPTIMIZATION: Cache for generalInquiry (1-hour TTL, keyed by inquiryType)
+const cachedInquiryData = {};
+const cacheTimestamps = {};
 const CACHE_TTL = 3600000; // 1 hour in milliseconds
 
 /**
@@ -324,7 +324,7 @@ router.post('/lookupCustomer', async (req, res) => {
 /**
  * OPTIMIZED v2.8.16: General Inquiry
  * - Parallel API calls with Promise.allSettled for 3x speedup
- * - 1-hour caching for business hours, services, and team (45ms → <1ms)
+ * - 1-hour caching per inquiryType for business hours, services, and team (45ms → <1ms)
  * - Safe result building pattern
  * - Minimal logging
  */
@@ -333,14 +333,15 @@ router.post('/generalInquiry', async (req, res) => {
     const { inquiryType } = req.body;
     const returnAll = !inquiryType;
     const now = Date.now();
+    const cacheKey = inquiryType || 'all';
 
-    // OPTIMIZED: Return cached data if fresh
-    if (cachedInquiryData && (now - cacheTimestamp < CACHE_TTL)) {
-      console.log(`ℹ️ generalInquiry: ${inquiryType || 'all'} (cached)`);
-      return res.json(cachedInquiryData);
+    // OPTIMIZED: Return cached data if fresh for this specific inquiryType
+    if (cachedInquiryData[cacheKey] && cacheTimestamps[cacheKey] && (now - cacheTimestamps[cacheKey] < CACHE_TTL)) {
+      console.log(`ℹ️ generalInquiry: ${cacheKey} (cached)`);
+      return res.json(cachedInquiryData[cacheKey]);
     }
 
-    console.log(`ℹ️ generalInquiry: ${inquiryType || 'all'} (fetching)`);
+    console.log(`ℹ️ generalInquiry: ${cacheKey} (fetching)`);
 
     // OPTIMIZED: Build promises array for parallel execution
     const promises = [];
@@ -454,9 +455,9 @@ router.post('/generalInquiry', async (req, res) => {
       }
     });
 
-    // OPTIMIZED: Cache the result for 1 hour
-    cachedInquiryData = result;
-    cacheTimestamp = now;
+    // OPTIMIZED: Cache the result for 1 hour per inquiryType
+    cachedInquiryData[cacheKey] = result;
+    cacheTimestamps[cacheKey] = now;
 
     res.json(result);
   } catch (error) {
